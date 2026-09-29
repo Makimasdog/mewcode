@@ -1,8 +1,7 @@
 # MewCode 架构说明入口
 
 本文档目录只保留经过源码核对的架构视图。运行时代码的权威位置是
-`mewcode/`；根目录下同名 Python 文件和目录是历史兼容镜像，见
-[`structure-audit.md`](structure-audit.md)。
+`mewcode/`；根目录不再保留历史源码镜像。
 
 ## 阅读顺序
 
@@ -36,7 +35,7 @@
 
 ## 维护规则
 
-- 代码引用统一使用 `mewcode/...`，不要把根目录镜像当作运行时实现。
+- 代码引用统一使用 `mewcode/...`，运行时源码也统一位于该包内。
 - DSL 和 DOT 是人工维护的源视图；生成的 HTML、JSON、浏览器检查结果放在
   `.archify/`，不提交到仓库。
 - 新增架构事实时，先在 `mewcode.evidence.md` 添加源码证据，再修改 DSL 或叙述。

@@ -69,7 +69,7 @@ JSON/JSONL，Runtime 使用 `runs/<id>.json` 与 `<id>.events.jsonl`，DAG 使�
 
 ## 兼容性边界
 
-根目录镜像不是 wheel 的打包入口，但仍被旧路径和教程提及，因此暂时保留。
+根目录不再保留历史源码镜像，wheel 与本地运行入口均统一使用 `mewcode/`。
 真正的兼容逻辑位于 `mewcode/` 内部：会话旧字段、旧配置格式和 MCP SDK 字段
 别名。它们必须在格式迁移或依赖升级方案确定后才能删除。
 

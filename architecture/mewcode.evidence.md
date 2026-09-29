@@ -52,4 +52,4 @@
 - `mewcode/conversation.py` 明确同步旧字段，避免旧会话读取失败。
 - `mewcode/validator.py` 保留 list 配置格式。
 - `mewcode/mcp/tool_wrapper.py` 同时读取 SDK 的 camelCase 和 snake_case 字段。
-- 根目录镜像由历史路径和教程引用，但 `pyproject.toml` 不把它们作为 wheel 源码。
+- 运行时源码统一位于 `mewcode/`，`pyproject.toml` 仅将该包作为 wheel 源码。
