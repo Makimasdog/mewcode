@@ -1,4 +1,4 @@
-workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding assistant (Python + Textual). Current state, derived from code inspection on 2026-09-26." {
+workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding assistant (Python + Textual). Current state, derived from code inspection on 2026-09-28." {
     !identifiers hierarchical
 
     model {
@@ -6,7 +6,7 @@ workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding a
         dev = person "Developer" "Runs MewCode from a terminal to explore, edit, and reason about a codebase interactively."
 
         # ---- External systems ----
-        cicd = softwareSystem "CI / Automation" "Submits non-interactive agent runs (mewcode -p one-shot, or HTTP runs against the Runtime Server)." {
+        automation = softwareSystem "Script or Service Caller" "Uses the documented -p command or Runtime HTTP API to submit non-interactive agent runs." {
             tags "External"
         }
         anthropic = softwareSystem "Anthropic API" "Claude models. Messages API with streaming and prompt caching." {
@@ -58,7 +58,7 @@ workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding a
 
         # ---- Relationships: system context ----
         dev -> mewcode "Uses via the terminal (interactive TUI or -p one-shot)"
-        cicd -> mewcode "Submits agent runs (one-shot CLI or HTTP runs API)" "HTTP / SSE"
+        automation -> mewcode "Submits agent runs (one-shot CLI or HTTP runs API)" "CLI / HTTP / SSE"
         mewcode -> anthropic "Sends conversation, streams completions" "HTTPS"
         mewcode -> openai "Sends conversation, streams completions" "HTTPS"
         mewcode -> mcpServers "Discovers and invokes external tools" "stdio / HTTP"
@@ -66,7 +66,7 @@ workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding a
 
         # ---- Relationships: container level ----
         dev -> mewcode.tui "Runs the interactive TUI"
-        cicd -> mewcode.server "POST /v1/runs, GET status, cancel, SSE events" "HTTP / SSE"
+        automation -> mewcode.server "POST /v1/runs, GET status, cancel, SSE events" "HTTP / SSE"
         mewcode.tui -> mewcode.engine "Drives the agent loop in-process"
         mewcode.server -> mewcode.engine "Builds and runs agents via runtime.bootstrap"
         mewcode.server -> mewcode.stateStore "Writes run snapshots and event logs (.mewcode/runs)" "file"
@@ -97,7 +97,7 @@ workspace "MewCode" "Evidence-backed C4 model of MewCode, a terminal AI coding a
         mewcode.engine.memory -> mewcode.stateStore "Reads/writes memory and session files" "file"
 
         # ---- Relationships: components inside the Runtime Server ----
-        cicd -> mewcode.server.httpAdapter "POST /v1/runs; GET .../events (SSE)" "HTTP / SSE"
+        automation -> mewcode.server.httpAdapter "POST /v1/runs; GET .../events (SSE)" "HTTP / SSE"
         mewcode.server.serverMain -> mewcode.server.bootstrap "build_runtime(config)"
         mewcode.server.serverMain -> mewcode.server.httpAdapter "create_app(runtime); serves via uvicorn"
         mewcode.server.httpAdapter -> mewcode.server.runtimeService "submit / get / cancel / subscribe"

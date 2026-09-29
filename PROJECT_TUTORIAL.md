@@ -20,6 +20,8 @@ MewCode 是一个运行在终端中的 AI 编程助手，技术核心是 Python�
 
 `pyproject.toml` 将脚本入口配置为 `mewcode.__main__:main`，并且只把 `mewcode/` 目录打包为 wheel。因此实际开发时应以 `mewcode/` 下的代码为准。
 
+系统边界、入口关系和源码证据集中维护在 [`architecture/README.md`](architecture/README.md)。
+
 仓库根目录还存在一组与 `mewcode/` 同名的历史镜像文件（例如 `agent.py` 和 `mewcode/agent.py` 内容相同）。这些文件不是打包入口，修改功能时不要只修改根目录副本；如果需要清理镜像，应单独提交并先确认不会影响用户已有工作。
 
 ### 1.2 环境

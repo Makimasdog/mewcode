@@ -235,6 +235,13 @@ mewcode/
 └── tests/                  # 测试
 ```
 
+## 架构说明
+
+架构审计、当前系统边界、源码证据和可渲染图的入口在
+[`architecture/README.md`](architecture/README.md)。运行时实现以 `mewcode/`
+为准；根目录同名源码是暂保留的历史兼容镜像，详见
+[`architecture/structure-audit.md`](architecture/structure-audit.md)。
+
 ## 开发者
 
 ### 运行测试

@@ -10,4 +10,6 @@ build/
 .mewcode/
 .claude/
 CLAUDE.md
-memory
+.archify/
+.qoder/
+.pytest_cache/

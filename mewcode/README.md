@@ -4,6 +4,8 @@
 
 MewCode 是一个运行在终端里的 AI 编程助手，支持多 LLM 提供商、MCP 协议、子 Agent 调度、Agent 团队协作等能力。灵感来源于 Claude Code，使用 Python + Textual 构建 TUI 交互界面。
 
+架构说明请从仓库根目录的 [`architecture/README.md`](../architecture/README.md) 开始；本文件只保留包内使用说明。
+
 ## 功能特性
 
 - **多提供商支持** — Anthropic、OpenAI、OpenAI 兼容协议均可接入，支持多模型热切换
