@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """危险命令检测（五层权限体系的第 1、1b 层用到的能力）。
 
 本文件提供两类"命令安全"工具：

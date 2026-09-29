@@ -1,8 +1,19 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+exit_worktree.py — 退出 Worktree 工具
+================================================
 
+【这个模块做什么】
+退出 worktree 会话，恢复原始工作目录。
+
+【两种操作】
+- keep: 保留 worktree 和分支（可稍后手动删除）
+- remove: 删除 worktree 和分支
+
+【安全约束】
+- remove 操作前检查未提交变更
+- 如有变更，需显式 discard_changes=true 确认
+- 只操作当前会话创建的 worktree
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
@@ -17,6 +28,7 @@ if TYPE_CHECKING:
 
 
 class ExitWorktreeParams(BaseModel):
+    """ExitWorktree 参数模型"""
     action: str = Field(
         description='"keep" leaves the worktree and branch on disk; "remove" deletes both.',
     )
@@ -31,6 +43,14 @@ class ExitWorktreeParams(BaseModel):
 
 
 class ExitWorktreeTool(Tool):
+    """
+    退出 Worktree 工具 — 退出 worktree 会话。
+    
+    特性:
+    - 支持 keep（保留）和 remove（删除）两种操作
+    - 删除前检查未提交变更
+    - 延迟加载（should_defer=True）
+    """
     name = "ExitWorktree"
     description = (
         "Exits a worktree session created by EnterWorktree and restores "
@@ -46,6 +66,7 @@ class ExitWorktreeTool(Tool):
 
 
     async def execute(self, params: ExitWorktreeParams) -> ToolResult:
+        # 1. 检查是否有活跃的 worktree 会话
         session = self._manager.get_current_session()
         if session is None:
             return ToolResult(
@@ -67,6 +88,7 @@ class ExitWorktreeTool(Tool):
 
         discard = params.discard_changes or False
 
+        # 2. remove 操作前检查未提交变更
         if action == "remove" and not discard:
             changes = count_worktree_changes(
                 session.worktree_path, session.original_head_commit
@@ -94,6 +116,7 @@ class ExitWorktreeTool(Tool):
         original_cwd = session.original_cwd
         wt_name = session.worktree_name
 
+        # 3. 执行退出
         try:
             await self._manager.exit(wt_name, action=action, discard_changes=discard)
         except Exception as e:

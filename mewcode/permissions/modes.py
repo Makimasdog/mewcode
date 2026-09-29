@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """权限模式（Permission Mode）核心定义。
 
 这是五层权限体系里"第 4 层权限模式兜底"用到的数据与逻辑：

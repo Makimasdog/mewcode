@@ -1,8 +1,19 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+team_delete.py — 团队删除工具
+================================================
 
+【这个模块做什么】
+删除 Agent 团队，清理所有相关资源。
+
+【清理内容】
+- 终止所有终端 pane 进程
+- 删除 Git worktree
+- 清理邮箱和团队目录
+- 恢复父 Agent 的完整工具集（如果启用了协调者模式）
+
+【安全约束】
+- 要求所有成员处于空闲状态
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,10 +28,20 @@ if TYPE_CHECKING:
 
 
 class TeamDeleteParams(BaseModel):
-    team_name: str
+    """TeamDelete 参数模型"""
+    team_name: str  # 团队名称
 
 
 class TeamDeleteTool(Tool):
+    """
+    团队删除工具 — 删除 Agent 团队并清理资源。
+    
+    特性:
+    - 终止所有终端 pane 进程
+    - 删除 Git worktree
+    - 清理邮箱和团队目录
+    - 恢复父 Agent 的完整工具集
+    """
     name = "TeamDelete"
     description = (
         "Delete an Agent Team. Terminates all pane processes, removes worktrees, "
@@ -41,6 +62,7 @@ class TeamDeleteTool(Tool):
 
         from mewcode.teams.manager import TeamError
 
+        # 删除团队（包括进程、worktree、邮箱等）
         try:
             self._team_manager.delete_team(p.team_name)
         except TeamError as e:
@@ -48,6 +70,7 @@ class TeamDeleteTool(Tool):
         except Exception as e:
             return ToolResult(output=f"Failed to delete team: {e}", is_error=True)
 
+        # 如果启用了协调者模式，恢复父 Agent 的完整工具集
         coordinator_note = ""
         if self._parent_agent and self._parent_agent.coordinator_mode:
             full_registry = getattr(self._parent_agent, '_full_registry', None)

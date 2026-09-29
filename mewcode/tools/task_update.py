@@ -1,8 +1,16 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+task_update.py — 任务更新工具
+================================================
 
+【这个模块做什么】
+更新任务的状态、负责人、描述或依赖关系。
+
+【任务状态】
+- pending: 待处理
+- in_progress: 进行中
+- completed: 已完成
+- blocked: 被阻塞
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,18 +24,21 @@ if TYPE_CHECKING:
 
 
 class TaskUpdateParams(BaseModel):
+    """TaskUpdate 参数模型"""
     task_id: str
-    status: str | None = None
-    assignee: str | None = None
-    description: str | None = None
-    add_blocks: list[str] | None = None
-    add_blocked_by: list[str] | None = None
+    status: str | None = None           # 新状态
+    assignee: str | None = None         # 新负责人
+    description: str | None = None      # 新描述
+    add_blocks: list[str] | None = None        # 新增阻塞关系
+    add_blocked_by: list[str] | None = None    # 新增被阻塞关系
 
 
+# 有效的任务状态
 VALID_STATUSES = {"pending", "in_progress", "completed", "blocked"}
 
 
 class TaskUpdateTool(Tool):
+    """任务更新工具 — 更新任务的状态、负责人、描述或依赖关系"""
     name = "TaskUpdate"
     description = (
         "Update a shared task's status, assignee, description, or dependencies. "
@@ -46,6 +57,7 @@ class TaskUpdateTool(Tool):
     async def execute(self, params: BaseModel) -> ToolResult:
         p: TaskUpdateParams = params  # type: ignore[assignment]
 
+        # 验证状态值
         if p.status and p.status not in VALID_STATUSES:
             return ToolResult(
                 output=f"Invalid status '{p.status}'. Must be one of: {', '.join(sorted(VALID_STATUSES))}",
@@ -56,6 +68,7 @@ class TaskUpdateTool(Tool):
         if store is None:
             return ToolResult(output=f"Task store not found for team '{self._team_name}'", is_error=True)
 
+        # 更新任务
         task = store.update(
             task_id=p.task_id,
             status=p.status,
@@ -68,6 +81,7 @@ class TaskUpdateTool(Tool):
         if task is None:
             return ToolResult(output=f"Task '{p.task_id}' not found", is_error=True)
 
+        # 构建变更摘要
         changes: list[str] = []
         if p.status:
             changes.append(f"status → {p.status}")

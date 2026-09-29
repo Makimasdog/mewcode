@@ -1,7 +1,23 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+agent_tool.py — 子 Agent 启动工具（核心编排器）
+================================================
+
+【这个模块做什么】
+启动子 Agent 来处理任务，支持三种执行路径：
+1. 普通子 Agent: 在父 Agent 进程内运行
+2. Worktree 隔离: 在独立 Git worktree 中执行
+3. 团队成员: 作为长期运行的队友在独立终端执行
+
+【三种路径对比】
+- 普通子 Agent: 一次性任务，阻塞等待结果
+- Worktree 隔离: 独立工作区，不污染主目录
+- 团队成员: 长期运行，通过 SendMessage 通信
+
+【设计亮点】
+- 通过参数组合决定执行路径（team_name、isolation、subagent_type）
+- 统一的权限检查、任务追踪、追踪树管理
+- 支持 Fork 模式（继承父对话上下文）
+"""
 from __future__ import annotations
 
 import logging
@@ -22,12 +38,13 @@ log = logging.getLogger(__name__)
 
 
 class AgentToolParams(BaseModel):
-    """Agent 工具的入参模型。
-
-    LLM 通过定位参数字段组合来决定启动一个怎样的子 Agent：
-    - 仅带 prompt：fork 当前对话（需开启 enable_fork）；
-    - 带 subagent_type：启动预设类型的子 Agent（Explore/Plan/...）；
-    - 带 team_name：以团队成员身份启动（团队协作场景）。
+    """
+    Agent 工具的入参模型。
+    
+    通过参数组合决定启动哪种类型的子 Agent：
+    - 仅带 prompt: fork 当前对话（需开启 enable_fork）
+    - 带 subagent_type: 启动预设类型的子 Agent（Explore/Plan/...）
+    - 带 team_name: 以团队成员身份启动（团队协作场景）
     """
 
     prompt: str  # 派发给子 Agent 的任务说明
@@ -49,17 +66,17 @@ class AgentToolParams(BaseModel):
     )
 
 
+# 权限模式映射：配置字符串 → PermissionMode 枚举名
 PERMISSION_MODE_MAP = {
-    # 把配置/Agent 定义里的权限模式字符串映射到 PermissionMode 枚举名
     "default": "DEFAULT",
     "acceptEdits": "ACCEPT_EDITS",
     "dontAsk": "DONT_ASK",
 }
 
 
+# 团队成员的强制约束（附加到系统提示词末尾）
+# 成员只能通过 SendMessage 与外界通信，文件访问限定在隔离 worktree 内
 TEAMMATE_ADDENDUM = (
-    # 附加到团队成员系统提示词末尾的强制约束：
-    # 成员只能通过 SendMessage 与外界通信，文件访问限定在隔离 worktree 内。
     "\n\nIMPORTANT: You are running as an agent in a team.\n"
     "Just writing a response in text is not visible to others\n"
     "on your team - you MUST use the SendMessage tool.\n"
@@ -73,6 +90,14 @@ TEAMMATE_ADDENDUM = (
 
 
 class AgentTool(Tool):
+    """
+    子 Agent 启动工具 — 核心编排器。
+    
+    根据参数选择三种执行路径：
+    1. 指定 team_name → 团队成员模式
+    2. isolation="worktree" → Git worktree 隔离执行
+    3. 其他 → 常规子 Agent（预设类型或 fork 父对话）
+    """
     name = "Agent"
     description = (
         "Launch a sub-agent to handle a task in an isolated context. "
@@ -96,17 +121,24 @@ class AgentTool(Tool):
         worktree_manager: Any = None,
         team_manager: Any = None,
     ) -> None:
-        self._agent_loader = agent_loader
-        self._task_manager = task_manager
-        self._trace_manager = trace_manager
-        self._parent_agent = parent_agent
-        self._enable_fork = enable_fork
-        self._provider_config = provider_config
-        self._worktree_manager = worktree_manager
-        self._team_manager = team_manager
+        self._agent_loader = agent_loader      # Agent 定义加载器
+        self._task_manager = task_manager        # 任务管理器（后台任务）
+        self._trace_manager = trace_manager      # 追踪管理器（追踪树）
+        self._parent_agent = parent_agent        # 父 Agent（继承配置）
+        self._enable_fork = enable_fork          # 是否允许 Fork 模式
+        self._provider_config = provider_config  # LLM 提供商配置
+        self._worktree_manager = worktree_manager  # Worktree 管理器
+        self._team_manager = team_manager        # 团队管理器
 
     async def execute(self, params: BaseModel) -> ToolResult:
-        """Agent 工具主入口：按参数分流到子 Agent / worktree 隔离 / 团队成员三种流程。"""
+        """
+        Agent 工具主入口。
+        
+        按参数分流到三种执行路径：
+        1. team_name 存在 → _execute_as_teammate()
+        2. isolation="worktree" → _execute_with_worktree()
+        3. 其他 → 常规子 Agent 执行
+        """
         p: AgentToolParams = params  # type: ignore[assignment]
 
         # 路径 1：指定了团队 → 以团队成员身份启动

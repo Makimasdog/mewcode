@@ -21,6 +21,7 @@ from mewcode.config import (
     AppConfig,
     ConfigError,
     MCPServerConfig,
+    ProviderConfig,
     build_child_env,
     load_config,
     resolve_env_vars,
@@ -52,6 +53,32 @@ class TestResolveEnvVars:
         monkeypatch.setenv("EXISTS", "yes")
         monkeypatch.delenv("NOPE", raising=False)
         assert resolve_env_vars("${EXISTS}/${NOPE}") == "yes/${NOPE}"
+
+
+class TestProviderApiKey:
+    def test_expands_configured_environment_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-secret")
+        provider = ProviderConfig(
+            name="anthropic",
+            protocol="anthropic",
+            base_url="https://api.anthropic.com",
+            model="claude-sonnet-4-6",
+            api_key="${ANTHROPIC_API_KEY}",
+        )
+        assert provider.resolve_api_key() == "test-secret"
+
+    def test_missing_configured_environment_variable_is_not_used_as_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        provider = ProviderConfig(
+            name="anthropic",
+            protocol="anthropic",
+            base_url="https://api.anthropic.com",
+            model="claude-sonnet-4-6",
+            api_key="${ANTHROPIC_API_KEY}",
+        )
+        assert provider.resolve_api_key() == ""
 
 # ===========================================================================
 # build_child_env

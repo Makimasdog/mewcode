@@ -1,8 +1,9 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+task_get.py — 任务查询工具
+================================================
 
+【这个模块做什么】
+按任务 ID 查询任务详情，包括依赖关系。"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,10 +17,12 @@ if TYPE_CHECKING:
 
 
 class TaskGetParams(BaseModel):
-    task_id: str
+    """TaskGet 参数模型"""
+    task_id: str  # 任务 ID
 
 
 class TaskGetTool(Tool):
+    """任务查询工具 — 按 ID 获取任务详情"""
     name = "TaskGet"
     description = "Get details of a shared task by ID, including dependency information."
     params_model = TaskGetParams
@@ -43,6 +46,7 @@ class TaskGetTool(Tool):
         if task is None:
             return ToolResult(output=f"Task '{p.task_id}' not found", is_error=True)
 
+        # 构建任务详情输出
         lines = [
             f"Task {task.id}:",
             f"  Title:      {task.title}",

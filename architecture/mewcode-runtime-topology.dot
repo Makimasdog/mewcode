@@ -1,0 +1,75 @@
+// MewCode — 运行时 / 部署拓扑（runtime & deployment topology）
+// 格式选择：部署 / 资源图按插件规范使用 Graphviz DOT（rankdir=TB，便于 Qoder DOT 预览）。
+// 状态：current-state，基于 2026-09-26 代码审查。派生自 mewcode.structurizr.dsl，但单独维护。
+// 证据见 mewcode.evidence.md。标注 (inferred) 者为推断项。
+digraph mewcode_runtime_topology {
+    rankdir=TB;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11];
+    edge [fontname="Helvetica", fontsize=9];
+    label="MewCode 运行时 / 部署拓扑（本地单机；三种进程入口均在内进程嵌入 Agent Engine）";
+    labelloc=t;
+    fontsize=14;
+
+    // ---- 参与者 ----
+    dev [label="Developer\n(终端用户)", shape=ellipse, style=filled, fillcolor="#08427b", fontcolor=white];
+    ci  [label="CI / Automation\n(inferred)", shape=ellipse, style=filled, fillcolor="#999999", fontcolor=white];
+
+    // ---- 本地主机边界 ----
+    subgraph cluster_host {
+        label="Local Host（开发者机器 / 服务器主机）";
+        style=rounded;
+        color="#438dd5";
+        fontsize=12;
+
+        cli_tui [label="mewcode\nCLI + Textual TUI\n(交互进程)", shape=box, style="rounded,filled", fillcolor="#438dd5", fontcolor=white];
+        cli_p   [label="mewcode -p\n一次性无头执行\n(进程内 Agent)", shape=box, style="rounded,filled", fillcolor="#438dd5", fontcolor=white];
+        server  [label="mewcode-server\nuvicorn + FastAPI\n默认 127.0.0.1:8765", shape=box, style="rounded,filled", fillcolor="#438dd5", fontcolor=white];
+
+        mcp_stdio [label="MCP stdio 服务器\n(子进程, 如 npx ...)", shape=box3d, style=filled, fillcolor="#dfe8f3"];
+
+        fs_state [label=".mewcode/ 状态目录\nconfig.yaml · permissions.yaml\nsessions · runs/<id>.json\nruns/<id>.events.jsonl\ndag-runs/ · memory", shape=folder, style=filled, fillcolor="#2e7d32", fontcolor=white];
+        fs_work  [label="本地工作区 & Git 仓库\n(cwd)", shape=folder, style=filled, fillcolor="#c8e6c9"];
+    }
+
+    // ---- 外部网络边界 ----
+    subgraph cluster_external {
+        label="External Network（LLM / 远程 MCP）";
+        style=rounded;
+        color="#999999";
+        fontsize=12;
+
+        anthropic [label="Anthropic API", shape=cloud, style=filled, fillcolor="#eeeeee"];
+        openai    [label="OpenAI / 兼容 API", shape=cloud, style=filled, fillcolor="#eeeeee"];
+        mcp_remote [label="远程 MCP 服务器\n(HTTP)", shape=cloud, style=filled, fillcolor="#eeeeee"];
+    }
+
+    // ---- 使用者 -> 进程 ----
+    dev -> cli_tui [label="交互式终端"];
+    dev -> cli_p   [label="一次性 prompt"];
+    ci  -> server  [label="POST /v1/runs\nGET .../events (SSE)", style=dashed];
+    ci  -> cli_p   [label="exec mewcode -p", style=dashed];
+
+    // ---- 进程 -> 本地存储 ----
+    cli_tui -> fs_state [label="会话 / 记忆 / 权限 / worktree"];
+    cli_tui -> fs_work  [label="读写文件; git & shell"];
+    cli_p   -> fs_state [label="读写状态"];
+    cli_p   -> fs_work  [label="读写文件; git & shell"];
+    server  -> fs_state [label="runs/*.json + *.events.jsonl;\nsessions 恢复/保存"];
+    server  -> fs_work  [label="读写文件; git & shell\n(经进程内 Agent)"];
+
+    // ---- 进程 -> 本地 MCP 子进程 ----
+    cli_tui -> mcp_stdio [label="spawn / stdio"];
+    cli_p   -> mcp_stdio [label="spawn / stdio"];
+    server  -> mcp_stdio [label="spawn / stdio"];
+
+    // ---- 进程 -> 外部网络 (出站 HTTPS) ----
+    cli_tui -> anthropic [label="HTTPS (stream)"];
+    cli_tui -> openai    [label="HTTPS (stream)"];
+    cli_tui -> mcp_remote [label="HTTP"];
+    cli_p   -> anthropic [label="HTTPS"];
+    cli_p   -> openai    [label="HTTPS"];
+    server  -> anthropic [label="HTTPS (进程内 Agent)"];
+    server  -> openai    [label="HTTPS (进程内 Agent)"];
+    server  -> mcp_remote [label="HTTP"];
+}

@@ -4,17 +4,15 @@
 
 ## 0. 先建立正确的项目认知
 
-MewCode 是一个运行在终端中的 AI 编程助手，技术核心是 Python、Textual、Anthropic/OpenAI SDK、MCP 和 Git Worktree。它不是传统的 Web 应用：
+MewCode 是一个运行在终端中的 AI 编程助手，技术核心是 Python、Textual、Anthropic/OpenAI SDK、MCP 和 Git Worktree。它以本地 TUI 为主要交互入口，同时提供不依赖 Textual 的 `AgentRuntime` 和可选 FastAPI/SSE 适配层：
 
-- 没有 FastAPI、Flask、Django 等 HTTP 服务端。
-- 没有 PostgreSQL、MySQL 等 SQL 数据库。
-- “后端”由 Agent 决策循环、LLM 协议适配、工具执行、权限、安全策略和本地文件持久化组成。
-- “前端”是 Textual TUI，负责输入、流式输出、工具调用展示、权限确认和会话操作。
+- 本地交互界面由 Textual 负责输入、流式输出、工具调用展示、权限确认和会话操作。
+- `AgentRuntime` 负责后台 Run 的创建、状态持久化、取消、超时、重试、事件回放和会话恢复。
+- 可选的 `mewcode-server` 通过 FastAPI/SSE 暴露 Run 提交、状态查询、取消和事件流接口。
+- 当前没有 PostgreSQL、MySQL 等 SQL 数据库；会话、Run 快照、事件和 DAG 状态使用 JSON/JSONL 文件保存，适合本地单用户部署。
+- “后端”由 Agent 决策循环、LLM 协议适配、工具执行、权限、安全策略、Runtime 和本地文件持久化组成。
 
-因此，本文会同时给出两种视角：
-
-1. **当前实现视角**：准确描述仓库里已经存在的模块和接口。
-2. **服务化演进视角**：说明如果将来需要提供 HTTP API 或远程多用户能力，应如何映射 API、数据库和鉴权层；这部分不是当前代码的既有能力。
+本文优先描述当前代码已经实现的 TUI、Runtime 和可选 HTTP/SSE 接口；涉及多用户数据库、认证和分布式调度的内容会明确标注为后续演进方案。
 
 ## 1. 项目定位与快速运行
 
@@ -134,12 +132,14 @@ permission_mode: default
 | 记忆 | `mewcode/memory/` | 用户/项目记忆、相关记忆召回 | Agent/TUI 横切注入 |
 | Worktree | `mewcode/worktree/` | 隔离目录、分支、清理、恢复 | Agent/Team 使用 |
 | Hook | `mewcode/hooks/` | 生命周期动作、工具拒绝、prompt 注入 | Agent/TUI 事件流 |
+| Agent Runtime | `mewcode/runtime/` | Run 持久化、事件回放、可选 HTTP/SSE 服务 | 复用 Agent 与 Session |
+| DAG 编排 | `mewcode/runtime/dag.py`、`mewcode/tools/dag_tools.py` | 依赖校验、就绪节点并行与状态快照 | 调用现有 AgentTool |
 
 ### 2.4 技术栈与选择理由
 
 - **Python 3.11+**：异步 IO、SDK 生态和快速扩展适合 Agent 编排。
 - **Textual + Rich**：在终端提供组件化 UI、键盘绑定、Markdown 和异步消息循环。
-- **Pydantic 2**：工具参数模型、动态 MCP 参数模型和配置边界校验。
+- **Pydantic 2**：工具参数模型和动态 MCP 参数模型；YAML 应用配置由 `config.py` 解析、`validator.py` 校验。
 - **Anthropic SDK / OpenAI SDK**：分别适配 Anthropic Messages、OpenAI Responses 和 Chat Completions。
 - **MCP SDK + httpx**：接入外部工具服务，支持 stdio 和 streamable HTTP。
 - **PyYAML**：项目/用户配置、权限规则和 Hook 配置。
@@ -461,7 +461,7 @@ MY_COMMAND = Command(
 
 ## 5. 后端架构设计
 
-### 5.1 当前实现：内部 API，而非 HTTP API
+### 5.1 当前实现：Python Runtime API 与可选 HTTP API
 
 当前项目的“API”主要是 Python 协议和异步接口：
 
@@ -474,28 +474,23 @@ MY_COMMAND = Command(
 | `Agent.run_to_completion()` | task、可选 Conversation | 最终文本 | 非交互/后台任务 |
 | `CommandHandler` | `CommandContext` | UI 副作用/提示 | Slash 命令 |
 | `MCPClient.call_tool()` | tool name、JSON args | MCP CallToolResult | 外部工具调用 |
+| `AgentRuntime.submit()` | task、session、重试/超时配置 | `AgentRun` | 创建可持久化后台任务 |
+| `AgentRuntime.subscribe()` | run id、事件游标 | `RunEvent` 异步流 | 事件回放和实时订阅 |
 
-这些接口已经形成清晰的业务边界；在没有远程服务需求时，直接扩展这些 Python 接口比引入 HTTP 层更简单。
+这些接口形成了执行核心的业务边界。TUI、`-p` CLI 和可选 HTTP 服务都复用 `Agent` 等核心组件，但当前分别在 `app.py`、`__main__.py` 和 `runtime/bootstrap.py` 装配；TUI 与 `-p` CLI 并不通过 `AgentRuntime` 启动。仅使用本地 TUI/CLI 时无需启动 HTTP 服务。
 
-### 5.2 推荐的服务化 API 映射（演进方案）
+### 5.2 当前已实现的服务化 API
 
-如果未来要把 Agent 暴露给 Web、IDE 或团队服务，可以设计以下 REST/WebSocket 边界。它们是建议，不是当前已实现路由：
+安装 `server` 可选依赖后，`mewcode/runtime/http.py` 提供以下 FastAPI/SSE 路由：
 
 ```text
-POST   /v1/sessions                    创建会话
-GET    /v1/sessions                    分页查询会话
-GET    /v1/sessions/{id}               获取会话元信息/消息
-POST   /v1/sessions/{id}/messages      提交用户消息
-GET    /v1/runs/{run_id}/events        SSE/WebSocket 流式事件
+POST   /v1/runs                        提交 Agent 任务
+GET    /v1/runs/{run_id}               查询任务状态
 POST   /v1/runs/{run_id}/cancel        取消 Agent 运行
-POST   /v1/tools/{name}/approve        响应权限询问
-GET    /v1/agents                      Agent 类型目录
-POST   /v1/tasks                        创建后台子任务
-GET    /v1/tasks/{task_id}              查询任务状态
-GET    /v1/teams/{team}/mailbox         查询团队消息
+GET    /v1/runs/{run_id}/events        SSE 流式事件（支持 after 游标）
 ```
 
-建议把 `AgentEvent` 直接作为 SSE/WebSocket 事件协议，事件中至少包含 `run_id`、`sequence`、`type`、`payload` 和 `created_at`，这样客户端断线后可以从 sequence 恢复。
+事件由 `RunStore` 持久化为 JSONL，SSE 先按 `after` 游标回放历史事件，再订阅实时队列。客户端可用 sequence 补读已持久化事件；当前回放与订阅之间存在竞争窗口，不能保证单次连接完整接收窗口内的新事件。会话管理、权限审批、Agent 目录和团队 mailbox 的 HTTP 路由目前仍属于后续服务化扩展。
 
 ### 5.3 实际持久化结构（代替 SQL 数据库）
 
@@ -511,6 +506,8 @@ GET    /v1/teams/{team}/mailbox         查询团队消息
 | Flat memory | `~/.mewcode/memories.md`、`.mewcode/memories.md` | 用户偏好、反馈、项目知识、参考资料 |
 | File memory | `~/.mewcode/memory/*.md`、`.mewcode/memory/**/*.md` | frontmatter name/description/type + 正文 |
 | Permission rules | `permissions.yaml` 三层路径 | rule、effect |
+| Agent Run | `.mewcode/runs/<run_id>.json`、`.events.jsonl` | 状态快照、顺序事件 |
+| DAG Run | `.mewcode/dag-runs/<run_id>.json` | 节点依赖、状态与结果 |
 | Team config | `~/.mewcode/teams/<slug>/config.json` | name、lead_agent_id、members、description |
 | Team tasks | `~/.mewcode/teams/<slug>/tasks.json` | 共享任务、状态、负责人 |
 | Team mailbox | `~/.mewcode/teams/<slug>/mailbox/` | 发件人、收件人、类型、正文、时间 |
@@ -715,7 +712,7 @@ permissionMode: default
 1. 先统一源码目录和测试夹具，建立跨平台 CI。
 2. 为 AgentEvent、SessionRecord、ToolResult 增加版本字段，保证持久化兼容。
 3. 抽出 `AgentService`/`SessionRepository` 接口，允许从文件实现平滑切换到 SQL/对象存储。
-4. 增加 SSE/WebSocket 事件层，复用现有 AgentEvent。
+4. 在现有 SSE Run 事件流基础上，按需求补充权限审批、会话管理与 WebSocket 接口。
 5. 增加用户认证、项目级租户隔离、密钥托管和审计日志。
 6. 最后再引入远程团队调度和分布式任务队列。
 
@@ -735,15 +732,17 @@ permissionMode: default
 - Worktree：`mewcode/worktree/manager.py`
 - Skill：`mewcode/skills/loader.py`、`mewcode/skills/executor.py`
 - Hook：`mewcode/hooks/engine.py`、`mewcode/hooks/executors.py`
+- Runtime：`mewcode/runtime/service.py`、`mewcode/runtime/http.py`、`mewcode/runtime/store.py`
+- DAG：`mewcode/runtime/dag.py`、`mewcode/tools/dag_tools.py`
 - 测试：`tests/`
 
-## 11. 本次新增的三项能力
+## 11. 当前实现的 Runtime 与 DAG 能力
 
 ### 11.1 Agent Runtime 服务化
 
-`mewcode/runtime/service.py` 提供不依赖 Textual 的 `AgentRuntime` 应用服务，统一处理 Run 创建、Agent 工厂、会话恢复、事件发布、取消和状态查询。`RunStore` 将每个 Run 的快照保存为 `.mewcode/runs/<run_id>.json`，将事件追加保存为 `.events.jsonl`，因此 CLI、Worker 和未来 Web 客户端可以共享同一事件模型。
+`mewcode/runtime/service.py` 提供不依赖 Textual 的 `AgentRuntime` 应用服务，处理 Run 创建、Agent 工厂、会话恢复、事件发布、取消和状态查询。`RunStore` 将每个 Run 的快照保存为 `.mewcode/runs/<run_id>.json`，将事件追加保存为 `.events.jsonl`。当前 HTTP 服务使用该 Runtime；TUI 和 `-p` CLI 仍有各自的装配流程。
 
-`mewcode/runtime/http.py` 是可选 FastAPI/SSE 适配器，只有安装 `fastapi` 后才导入；`mewcode/runtime/server.py` 提供 `mewcode-server` 入口。SSE 支持 `after` 游标，先回放持久化事件，再订阅实时队列，客户端重连不会丢失已提交事件。
+`mewcode/runtime/http.py` 是可选 FastAPI/SSE 适配器，只有安装 `fastapi` 后才导入；`mewcode/runtime/server.py` 提供 `mewcode-server` 入口。SSE 支持 `after` 游标，先回放持久化事件，再订阅实时队列。客户端可补读已提交事件，但回放和订阅之间的竞争窗口仍需进一步处理。
 
 ### 11.2 Durable Agent
 
@@ -767,4 +766,4 @@ explore ──┐
 analyze ──┘
 ```
 
-下游节点收到依赖节点的结构化输出上下文；节点执行器通过注入的 callback 调用现有 `AgentTool`，所以权限、Agent 类型过滤、模型选择和追踪逻辑不会被 DAG 实现绕开。DAG 状态保存到 `.mewcode/dag-runs/`，可通过 `DAGStatus` 查询。
+下游节点收到以节点 ID 标记的依赖节点文本输出；节点执行器通过注入的 callback 调用现有 `AgentTool`，沿用其权限、Agent 类型过滤、模型选择和追踪逻辑。DAG 状态保存到 `.mewcode/dag-runs/`，可通过 `DAGStatus` 查询。

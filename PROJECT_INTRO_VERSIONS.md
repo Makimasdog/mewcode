@@ -4,7 +4,7 @@
 
 **AI 应用开发（项目时间按实际填写）**
 
-**项目简介：**参考 Claude Code 架构实现 MewCode 终端 AI 编程助手，基于 Agent 决策循环与 Tool Calling 构建任务执行闭环，集成多模型适配、Skill、上下文压缩、Memory、MCP、Multi-Agent 协作和权限安全机制，提升复杂代码任务的执行效率与稳定性。
+**项目简介：**参考 Claude Code 架构实现 MewCode 终端 AI 编程助手，基于 Agent 决策循环与 Tool Calling 构建任务执行闭环，集成多模型适配、Skill、上下文压缩、Memory、MCP、Multi-Agent 协作、可选 Agent Runtime 和权限安全机制，支持复杂代码任务的持续执行。
 
 **技术栈：**Python、Textual、Anthropic/OpenAI SDK、MCP、Pydantic、asyncio、Git Worktree、pytest
 
@@ -14,6 +14,7 @@
 - **Agent 执行闭环：**实现“模型推理—Tool Calling—结果回写—持续迭代”，支持文件操作、命令执行、MCP 和 Skill 扩展。
 - **上下文与记忆管理：**通过长期记忆、自动压缩、工具结果缓存和会话恢复，提升长任务处理稳定性并降低 Token 消耗。
 - **Multi-Agent 与安全控制：**支持子 Agent、团队协作和 Git Worktree 隔离开发；结合权限模式、沙箱、危险命令检测、Hook 和人工确认保障执行安全。
+- **后台任务运行：**可选 `AgentRuntime` 持久化 Run 状态和事件，支持超时、取消、重试和事件回放；DAG 工具支持依赖感知的子 Agent 编排。
 
 ## 版本二：标准版
 
@@ -21,7 +22,7 @@
 
 **项目简介：**参考 Claude Code 架构设计并实现 MewCode 终端 AI 编程助手，基于 Python + Textual 构建交互式 TUI，通过 Agent 决策循环和 Tool Calling 实现“代码理解—工具调用—结果反馈—持续迭代”的任务闭环。项目支持 Anthropic、OpenAI 及兼容协议，集成 MCP 外部工具、Skill 扩展、长期记忆、上下文压缩、Multi-Agent 协作和 Git Worktree 隔离开发，面向代码生成、重构、测试、审查等开发场景。
 
-**技术栈：**Python 3.11+、Textual、Rich、Anthropic SDK、OpenAI SDK、MCP、Pydantic、PyYAML、asyncio、Git Worktree、pytest、uv
+**技术栈：**Python 3.11+、Textual、Rich、Anthropic SDK、OpenAI SDK、MCP、Pydantic、PyYAML、asyncio、Git Worktree、FastAPI/SSE（可选）、pytest、uv
 
 **技术亮点：**
 
@@ -30,14 +31,15 @@
 - **上下文与记忆管理：**通过长期记忆、工具结果缓存、自动上下文压缩和会话恢复机制，降低长对话中的上下文溢出风险，提升复杂任务的连续执行能力。
 - **Multi-Agent 协作：**支持 Explore、Plan、General-purpose、Verification 等子 Agent，以及 Coordinator/Teammate 团队模式；结合 Git Worktree 实现并行任务的目录和分支隔离。
 - **权限与安全控制：**结合权限模式、路径沙箱、危险命令检测、Hook 拦截和人工确认，对模型生成的文件修改、命令执行及外部 MCP 工具调用进行多层风险控制。
+- **任务运行与编排：**通过可选 `AgentRuntime`、JSONL 事件日志和 DAG 调度，提供任务状态查询、超时、取消、重试、事件回放及依赖感知的子 Agent 执行。
 
 ## 版本三：详细版
 
 **AI 应用开发（项目时间按实际填写）**
 
-**项目简介：**参考 Claude Code 的产品形态与架构思路，设计并实现 MewCode 终端 AI 编程助手。项目基于 Python、Textual 和异步事件循环构建交互式 TUI，通过 Agent 决策循环连接大模型、工具和本地代码仓库，形成“Prompt 构建—模型推理—Tool Calling—权限审查—工具执行—结果回写—持续迭代”的任务执行闭环。系统支持多模型供应商、MCP 外部工具、Skill 扩展、会话持久化、长期记忆、上下文压缩、子 Agent 团队协作和 Git Worktree 隔离开发，可用于代码探索、功能实现、重构、测试和代码审查等复杂开发任务。
+**项目简介：**参考 Claude Code 的产品形态与架构思路，设计并实现 MewCode 终端 AI 编程助手。项目基于 Python、Textual 和异步事件循环构建交互式 TUI，通过 Agent 决策循环连接大模型、工具和本地代码仓库，形成“Prompt 构建—模型推理—Tool Calling—权限审查—工具执行—结果回写—持续迭代”的任务执行闭环。另提供可选 `AgentRuntime` 与 FastAPI/SSE 服务，支持 Run 状态持久化和事件回放。系统支持多模型供应商、MCP 外部工具、Skill 扩展、会话持久化、长期记忆、上下文压缩、子 Agent 团队协作和 Git Worktree 隔离开发，可用于代码探索、功能实现、重构、测试和代码审查等复杂开发任务。
 
-**技术栈：**Python 3.11+、Textual、Rich、asyncio、Anthropic SDK、OpenAI SDK、MCP SDK、httpx、Pydantic 2、PyYAML、JSONL、Git Worktree、pytest、pytest-asyncio、uv
+**技术栈：**Python 3.11+、Textual、Rich、asyncio、Anthropic SDK、OpenAI SDK、MCP SDK、httpx、Pydantic 2、PyYAML、JSONL、FastAPI/Uvicorn（可选）、Git Worktree、pytest、pytest-asyncio、uv
 
 **技术亮点：**
 
@@ -49,6 +51,7 @@
 - **Multi-Agent 协作与隔离：**提供 Explore、Plan、General-purpose、Verification 等子 Agent，并支持 Coordinator/Teammate 团队模式；结合 Git Worktree 为并行任务创建独立目录和分支，降低代码覆盖和协作冲突。
 - **多层权限与安全审查：**通过 `default`、`accept-edits`、`plan`、`bypass` 等权限模式，结合路径沙箱、危险命令识别、Hook 拦截和 Human-in-the-loop 确认，对模型生成的高风险操作进行分层控制。
 - **交互与自动化双模式：**基于 Textual 提供流式输出、命令补全、文件 `@` 引用和权限弹窗，同时支持 CLI 非交互模式，满足本地开发、脚本调用和 CI 自动化场景。
+- **可靠任务与服务接口：**可选 `AgentRuntime` 通过 RunStore 保存任务快照和事件，支持重试、超时、取消与事件回放；FastAPI/SSE 暴露任务提交与订阅接口，DAG 调度支持依赖感知的子 Agent 执行。
 
 ## 使用建议
 

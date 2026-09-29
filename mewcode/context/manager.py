@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """上下文管理器：负责「对话历史」的体积控制。
 
 LLM 的输入窗口（context_window）是有限的，Agent 跑得越久，历史越长，

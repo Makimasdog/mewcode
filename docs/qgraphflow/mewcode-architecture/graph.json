@@ -1,0 +1,611 @@
+{
+  "meta": {
+    "title": "MewCode · 容器级架构",
+    "subtitle": "终端 AI 编程助手：两个前端进程共享 Agent Engine，文件化状态存储，出站依赖 LLM / MCP / 文件系统",
+    "sourceRef": "MewCode@68f6703",
+    "scope": "mewcode",
+    "diagramType": "architecture",
+    "locale": "zh-CN"
+  },
+  "groups": [
+    {
+      "id": "g_mew",
+      "label": "MewCode 系统边界",
+      "kind": "ownership",
+      "position": {
+        "x": 422,
+        "y": 373
+      },
+      "size": {
+        "width": 1126,
+        "height": 863
+      }
+    },
+    {
+      "id": "g_ext",
+      "label": "外部依赖 (LLM / MCP / 文件系统)",
+      "kind": "external",
+      "position": {
+        "x": 32,
+        "y": 1450
+      },
+      "size": {
+        "width": 1986,
+        "height": 341
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "dev",
+      "label": "Developer",
+      "kind": "external",
+      "subtitle": "终端用户：交互式 TUI 或 -p 一次性执行",
+      "position": {
+        "x": 481.5,
+        "y": 32
+      },
+      "size": {
+        "width": 425,
+        "height": 115
+      }
+    },
+    {
+      "id": "ci",
+      "label": "CI / Automation",
+      "kind": "external",
+      "subtitle": "非交互调用方（推断）",
+      "facts": [
+        "通过 HTTP runs API 或 mewcode -p 提交任务",
+        "未检查 CI 配置，属推断角色"
+      ],
+      "position": {
+        "x": 1097,
+        "y": 32
+      },
+      "size": {
+        "width": 282,
+        "height": 115
+      }
+    },
+    {
+      "id": "tui",
+      "label": "CLI & TUI Application",
+      "kind": "service",
+      "groupId": "g_mew",
+      "module": "frontend",
+      "subtitle": "mewcode 命令：Textual 交互界面 + -p 无头模式",
+      "facts": [
+        "装配 config / 权限 / 工具 / 子 Agent / 团队",
+        "进程内驱动 Agent Engine"
+      ],
+      "source": {
+        "kind": "source",
+        "file": "mewcode/app.py",
+        "lineStart": 558,
+        "lineEnd": 600,
+        "symbol": "MewCodeApp"
+      },
+      "position": {
+        "x": 454,
+        "y": 443
+      },
+      "size": {
+        "width": 480,
+        "height": 115
+      }
+    },
+    {
+      "id": "server",
+      "label": "Runtime Server",
+      "kind": "service",
+      "groupId": "g_mew",
+      "module": "runtime-server",
+      "subtitle": "mewcode-server 命令：FastAPI + uvicorn，默认 127.0.0.1:8765",
+      "facts": [
+        "POST /v1/runs · GET /v1/runs/{id} · cancel · events(SSE)",
+        "持久化运行快照与事件日志，支持回放/恢复"
+      ],
+      "source": {
+        "kind": "source",
+        "file": "mewcode/runtime/server.py",
+        "lineStart": 10,
+        "lineEnd": 24,
+        "symbol": "main"
+      },
+      "position": {
+        "x": 998,
+        "y": 431
+      },
+      "size": {
+        "width": 480,
+        "height": 139
+      }
+    },
+    {
+      "id": "engine",
+      "label": "Agent Engine",
+      "kind": "business",
+      "groupId": "g_mew",
+      "module": "agent-engine",
+      "subtitle": "核心业务中枢：prompt → LLM → 工具 的主循环",
+      "facts": [
+        "与 UI 无关，被两个前端进程内嵌",
+        "工具派发受权限/Hook/上下文约束",
+        "由 MCP、子 Agent、团队、技能、记忆扩展"
+      ],
+      "source": {
+        "kind": "source",
+        "file": "mewcode/agent.py",
+        "lineStart": 431,
+        "lineEnd": 480,
+        "symbol": "Agent"
+      },
+      "position": {
+        "x": 466,
+        "y": 760
+      },
+      "size": {
+        "width": 480,
+        "height": 115
+      }
+    },
+    {
+      "id": "state",
+      "label": "State Store (.mewcode/)",
+      "kind": "database",
+      "groupId": "g_mew",
+      "module": "state",
+      "subtitle": "文件化状态：config / permissions / sessions / runs / memory",
+      "facts": [
+        "runs/<id>.json 快照 + <id>.events.jsonl 事件日志",
+        "append-only，线程锁保护"
+      ],
+      "source": {
+        "kind": "source",
+        "file": "mewcode/runtime/store.py",
+        "lineStart": 11,
+        "lineEnd": 100,
+        "symbol": "RunStore"
+      },
+      "position": {
+        "x": 731,
+        "y": 1065
+      },
+      "size": {
+        "width": 480,
+        "height": 139
+      }
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic API",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "llm-provider",
+      "subtitle": "Claude 模型：Messages API，流式 + prompt caching",
+      "position": {
+        "x": 563,
+        "y": 1508
+      },
+      "size": {
+        "width": 480,
+        "height": 139
+      }
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI / 兼容 API",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "llm-provider",
+      "subtitle": "OpenAI 及 OpenAI 兼容模型",
+      "position": {
+        "x": 1107,
+        "y": 1508
+      },
+      "size": {
+        "width": 335,
+        "height": 115
+      }
+    },
+    {
+      "id": "mcp",
+      "label": "MCP Tool Servers",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "mcp",
+      "subtitle": "外部 MCP 服务器，经 stdio 或 HTTP 提供工具",
+      "position": {
+        "x": 1506,
+        "y": 1508
+      },
+      "size": {
+        "width": 480,
+        "height": 115
+      }
+    },
+    {
+      "id": "workspace",
+      "label": "Local Workspace & Git Repo",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "workspace",
+      "subtitle": "用户项目文件与 git 仓库（cwd）",
+      "position": {
+        "x": 64,
+        "y": 1508
+      },
+      "size": {
+        "width": 435,
+        "height": 115
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "dev",
+      "target": "tui",
+      "kind": "request",
+      "label": "运行 mewcode（交互终端 / -p）",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 694,
+            "y": 159
+          },
+          {
+            "x": 694,
+            "y": 431
+          }
+        ],
+        "labelAt": {
+          "x": 694,
+          "y": 254
+        }
+      }
+    },
+    {
+      "id": "e2",
+      "source": "ci",
+      "target": "server",
+      "kind": "request",
+      "label": "POST /v1/runs · GET events (SSE)",
+      "evidence": "inference",
+      "route": {
+        "via": [
+          {
+            "x": 1238,
+            "y": 159
+          },
+          {
+            "x": 1238,
+            "y": 419
+          }
+        ],
+        "labelAt": {
+          "x": 1238,
+          "y": 254
+        }
+      }
+    },
+    {
+      "id": "e3",
+      "source": "tui",
+      "target": "engine",
+      "kind": "call",
+      "label": "进程内驱动主循环",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 694,
+            "y": 570
+          },
+          {
+            "x": 694,
+            "y": 748
+          }
+        ],
+        "labelAt": {
+          "x": 694,
+          "y": 665
+        }
+      }
+    },
+    {
+      "id": "e4",
+      "source": "server",
+      "target": "engine",
+      "kind": "call",
+      "label": "bootstrap 构建并运行 Agent",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 1226,
+            "y": 582
+          },
+          {
+            "x": 1226,
+            "y": 704
+          },
+          {
+            "x": 718,
+            "y": 704
+          },
+          {
+            "x": 718,
+            "y": 748
+          }
+        ],
+        "labelAt": {
+          "x": 1226,
+          "y": 665
+        }
+      }
+    },
+    {
+      "id": "e5",
+      "source": "server",
+      "target": "state",
+      "kind": "data",
+      "label": "写 runs/*.json + *.events.jsonl",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 1250,
+            "y": 582
+          },
+          {
+            "x": 1250,
+            "y": 594
+          },
+          {
+            "x": 1370.5,
+            "y": 594
+          },
+          {
+            "x": 1370.5,
+            "y": 1009
+          },
+          {
+            "x": 959,
+            "y": 1009
+          },
+          {
+            "x": 959,
+            "y": 1053
+          }
+        ],
+        "labelAt": {
+          "x": 1370.5,
+          "y": 817.5
+        }
+      }
+    },
+    {
+      "id": "e6",
+      "source": "engine",
+      "target": "state",
+      "kind": "data",
+      "label": "会话 / 记忆持久化",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 682,
+            "y": 887
+          },
+          {
+            "x": 682,
+            "y": 923
+          },
+          {
+            "x": 606,
+            "y": 923
+          },
+          {
+            "x": 606,
+            "y": 1033
+          },
+          {
+            "x": 983,
+            "y": 1033
+          },
+          {
+            "x": 983,
+            "y": 1053
+          }
+        ],
+        "labelAt": {
+          "x": 606,
+          "y": 970
+        }
+      }
+    },
+    {
+      "id": "e7",
+      "source": "engine",
+      "target": "anthropic",
+      "kind": "call",
+      "label": "HTTPS 流式补全（anthropic 协议）",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 706,
+            "y": 887
+          },
+          {
+            "x": 706,
+            "y": 1272
+          },
+          {
+            "x": 803,
+            "y": 1272
+          },
+          {
+            "x": 803,
+            "y": 1496
+          }
+        ],
+        "labelAt": {
+          "x": 803,
+          "y": 1343
+        }
+      }
+    },
+    {
+      "id": "e8",
+      "source": "engine",
+      "target": "openai",
+      "kind": "call",
+      "label": "HTTPS 流式补全（openai / 兼容）",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 730,
+            "y": 887
+          },
+          {
+            "x": 730,
+            "y": 923
+          },
+          {
+            "x": 1235,
+            "y": 923
+          },
+          {
+            "x": 1235,
+            "y": 1382
+          },
+          {
+            "x": 1274.5,
+            "y": 1382
+          },
+          {
+            "x": 1274.5,
+            "y": 1496
+          }
+        ],
+        "labelAt": {
+          "x": 1235,
+          "y": 1343
+        }
+      }
+    },
+    {
+      "id": "e9",
+      "source": "engine",
+      "target": "mcp",
+      "kind": "call",
+      "label": "调用外部 MCP 工具（stdio / HTTP）",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 754,
+            "y": 887
+          },
+          {
+            "x": 754,
+            "y": 899
+          },
+          {
+            "x": 1260,
+            "y": 899
+          },
+          {
+            "x": 1260,
+            "y": 1272
+          },
+          {
+            "x": 1568.5,
+            "y": 1272
+          },
+          {
+            "x": 1568.5,
+            "y": 1382
+          },
+          {
+            "x": 1746,
+            "y": 1382
+          },
+          {
+            "x": 1746,
+            "y": 1496
+          }
+        ],
+        "labelAt": {
+          "x": 1568.5,
+          "y": 1343
+        }
+      }
+    },
+    {
+      "id": "e10",
+      "source": "engine",
+      "target": "workspace",
+      "kind": "data",
+      "label": "读写文件 · 运行 git / shell",
+      "evidence": "source",
+      "route": {
+        "via": [
+          {
+            "x": 658,
+            "y": 887
+          },
+          {
+            "x": 658,
+            "y": 899
+          },
+          {
+            "x": 505,
+            "y": 899
+          },
+          {
+            "x": 505,
+            "y": 1382
+          },
+          {
+            "x": 281.5,
+            "y": 1382
+          },
+          {
+            "x": 281.5,
+            "y": 1426
+          },
+          {
+            "x": 365,
+            "y": 1426
+          },
+          {
+            "x": 365,
+            "y": 1496
+          },
+          {
+            "x": 281.5,
+            "y": 1496
+          },
+          {
+            "x": 281.5,
+            "y": 1496
+          }
+        ],
+        "labelAt": {
+          "x": 505,
+          "y": 1343
+        }
+      }
+    }
+  ],
+  "layout": {
+    "version": "adaptive-v2-elkjs-0.11.0",
+    "strategy": "layered-0"
+  }
+}

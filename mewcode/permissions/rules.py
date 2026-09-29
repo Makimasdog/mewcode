@@ -1,7 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 # 说明：本项目所有规则语法形如 "ToolName(pattern)"，例如 "Bash(git *)"。
 
 """规则引擎（五层权限体系的第 3 层能力）。

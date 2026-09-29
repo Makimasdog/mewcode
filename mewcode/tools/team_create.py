@@ -1,8 +1,21 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+team_create.py — 团队创建工具
+================================================
 
+【这个模块做什么】
+创建 Agent 团队，用于协调多个 Agent 并行工作。
+
+【团队工作流】
+1. 创建团队 (TeamCreate)
+2. 生成队友 (Agent + team_name)
+3. 队友独立工作，通过 SendMessage 通信
+4. 队友完成后向 lead 报告
+5. lead 收集并综合结果
+
+【协调者模式】
+启用后，lead 的工具集会被裁剪为「调度专用」，
+专注于任务分配而非直接执行。
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,11 +30,20 @@ if TYPE_CHECKING:
 
 
 class TeamCreateParams(BaseModel):
-    team_name: str
-    description: str = ""
+    """TeamCreate 参数模型"""
+    team_name: str         # 团队名称
+    description: str = ""  # 团队描述
 
 
 class TeamCreateTool(Tool):
+    """
+    团队创建工具 — 创建 Agent 团队。
+    
+    特性:
+    - 自动检测后端（TMUX/iTerm2/进程内）
+    - 支持协调者模式（工具集裁剪）
+    - 团队创建后可通过 Agent 工具生成队友
+    """
     name = "TeamCreate"
     description = (
         "Create a new team for coordinating multiple agents.\n\n"
@@ -79,6 +101,7 @@ class TeamCreateTool(Tool):
     async def execute(self, params: BaseModel) -> ToolResult:
         p: TeamCreateParams = params  # type: ignore[assignment]
 
+        # 1. 检测后端（TMUX/iTerm2/进程内）
         from mewcode.teams.backend_detect import BackendDetectionError
 
         try:
@@ -88,6 +111,7 @@ class TeamCreateTool(Tool):
         except BackendDetectionError as e:
             return ToolResult(output=str(e), is_error=True)
 
+        # 2. 创建团队
         try:
             team = self._team_manager.create_team(
                 name=p.team_name,
@@ -99,6 +123,7 @@ class TeamCreateTool(Tool):
         except Exception as e:
             return ToolResult(output=f"Failed to create team: {e}", is_error=True)
 
+        # 3. 可选：启用协调者模式
         coordinator_note = ""
         from mewcode.teams.coordinator import is_coordinator_mode
         if is_coordinator_mode(self._enable_coordinator_mode):

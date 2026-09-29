@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "title": "MewCode · 容器级架构",
+    "subtitle": "终端 AI 编程助手：两个前端进程共享 Agent Engine，文件化状态存储，出站依赖 LLM / MCP / 文件系统",
+    "sourceRef": "MewCode@68f6703",
+    "scope": "mewcode",
+    "diagramType": "architecture",
+    "locale": "zh-CN"
+  },
+  "groups": [
+    { "id": "g_mew", "label": "MewCode 系统边界", "kind": "ownership" },
+    { "id": "g_ext", "label": "外部依赖 (LLM / MCP / 文件系统)", "kind": "external" }
+  ],
+  "nodes": [
+    {
+      "id": "dev",
+      "label": "Developer",
+      "kind": "external",
+      "subtitle": "终端用户：交互式 TUI 或 -p 一次性执行"
+    },
+    {
+      "id": "ci",
+      "label": "CI / Automation",
+      "kind": "external",
+      "subtitle": "非交互调用方（推断）",
+      "facts": ["通过 HTTP runs API 或 mewcode -p 提交任务", "未检查 CI 配置，属推断角色"]
+    },
+    {
+      "id": "tui",
+      "label": "CLI & TUI Application",
+      "kind": "service",
+      "groupId": "g_mew",
+      "module": "frontend",
+      "subtitle": "mewcode 命令：Textual 交互界面 + -p 无头模式",
+      "facts": ["装配 config / 权限 / 工具 / 子 Agent / 团队", "进程内驱动 Agent Engine"],
+      "source": { "kind": "source", "file": "mewcode/app.py", "lineStart": 558, "lineEnd": 600, "symbol": "MewCodeApp" }
+    },
+    {
+      "id": "server",
+      "label": "Runtime Server",
+      "kind": "service",
+      "groupId": "g_mew",
+      "module": "runtime-server",
+      "subtitle": "mewcode-server 命令：FastAPI + uvicorn，默认 127.0.0.1:8765",
+      "facts": ["POST /v1/runs · GET /v1/runs/{id} · cancel · events(SSE)", "持久化运行快照与事件日志，支持回放/恢复"],
+      "source": { "kind": "source", "file": "mewcode/runtime/server.py", "lineStart": 10, "lineEnd": 24, "symbol": "main" }
+    },
+    {
+      "id": "engine",
+      "label": "Agent Engine",
+      "kind": "business",
+      "groupId": "g_mew",
+      "module": "agent-engine",
+      "subtitle": "核心业务中枢：prompt → LLM → 工具 的主循环",
+      "facts": ["与 UI 无关，被两个前端进程内嵌", "工具派发受权限/Hook/上下文约束", "由 MCP、子 Agent、团队、技能、记忆扩展"],
+      "source": { "kind": "source", "file": "mewcode/agent.py", "lineStart": 431, "lineEnd": 480, "symbol": "Agent" }
+    },
+    {
+      "id": "state",
+      "label": "State Store (.mewcode/)",
+      "kind": "database",
+      "groupId": "g_mew",
+      "module": "state",
+      "subtitle": "文件化状态：config / permissions / sessions / runs / memory",
+      "facts": ["runs/<id>.json 快照 + <id>.events.jsonl 事件日志", "append-only，线程锁保护"],
+      "source": { "kind": "source", "file": "mewcode/runtime/store.py", "lineStart": 11, "lineEnd": 100, "symbol": "RunStore" }
+    },
+    {
+      "id": "anthropic",
+      "label": "Anthropic API",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "llm-provider",
+      "subtitle": "Claude 模型：Messages API，流式 + prompt caching"
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI / 兼容 API",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "llm-provider",
+      "subtitle": "OpenAI 及 OpenAI 兼容模型"
+    },
+    {
+      "id": "mcp",
+      "label": "MCP Tool Servers",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "mcp",
+      "subtitle": "外部 MCP 服务器，经 stdio 或 HTTP 提供工具"
+    },
+    {
+      "id": "workspace",
+      "label": "Local Workspace & Git Repo",
+      "kind": "external",
+      "groupId": "g_ext",
+      "module": "workspace",
+      "subtitle": "用户项目文件与 git 仓库（cwd）"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "dev", "target": "tui", "kind": "request", "label": "运行 mewcode（交互终端 / -p）", "evidence": "source" },
+    { "id": "e2", "source": "ci", "target": "server", "kind": "request", "label": "POST /v1/runs · GET events (SSE)", "evidence": "inference" },
+    { "id": "e3", "source": "tui", "target": "engine", "kind": "call", "label": "进程内驱动主循环", "evidence": "source" },
+    { "id": "e4", "source": "server", "target": "engine", "kind": "call", "label": "bootstrap 构建并运行 Agent", "evidence": "source" },
+    { "id": "e5", "source": "server", "target": "state", "kind": "data", "label": "写 runs/*.json + *.events.jsonl", "evidence": "source" },
+    { "id": "e6", "source": "engine", "target": "state", "kind": "data", "label": "会话 / 记忆持久化", "evidence": "source" },
+    { "id": "e7", "source": "engine", "target": "anthropic", "kind": "call", "label": "HTTPS 流式补全（anthropic 协议）", "evidence": "source" },
+    { "id": "e8", "source": "engine", "target": "openai", "kind": "call", "label": "HTTPS 流式补全（openai / 兼容）", "evidence": "source" },
+    { "id": "e9", "source": "engine", "target": "mcp", "kind": "call", "label": "调用外部 MCP 工具（stdio / HTTP）", "evidence": "source" },
+    { "id": "e10", "source": "engine", "target": "workspace", "kind": "data", "label": "读写文件 · 运行 git / shell", "evidence": "source" }
+  ]
+}

@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """路径沙箱（五层权限体系的第 2 层能力）。
 
 PathSandbox 的作用是：把 Agent 可访问的文件范围限定在"项目根目录"以及

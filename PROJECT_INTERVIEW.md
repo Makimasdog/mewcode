@@ -8,7 +8,7 @@
 
 **参考答案：**
 
-MewCode 是一个运行在终端中的 AI 编程助手，目标是把代码理解、文件修改、命令执行和项目协作整合到一条工作流中。它基于 Python 和 Textual 构建 TUI，核心由 Agent 决策循环、统一 LLM 客户端、Tool Registry、权限系统和本地会话持久化组成。
+MewCode 是一个运行在终端中的 AI 编程助手，目标是把代码理解、文件修改、命令执行和项目协作整合到一条工作流中。它基于 Python 和 Textual 构建 TUI，另提供不依赖 UI 的 `AgentRuntime` 和可选 FastAPI/SSE 服务。核心由 Agent 决策循环、统一 LLM 客户端、Tool Registry、权限系统、任务与会话持久化组成。
 
 项目的几个主要亮点是：第一，通过统一事件模型兼容 Anthropic、OpenAI 以及 OpenAI-compatible 协议；第二，通过 MCP、Skill 和 Slash Command 提供可扩展工具能力；第三，通过权限模式、沙箱和 Hook 控制 AI 执行代码修改或命令的风险；第四，通过子 Agent、团队协作和 Git Worktree 支持复杂任务的拆分与隔离开发。
 
@@ -34,9 +34,10 @@ MewCode 是一个运行在终端中的 AI 编程助手，目标是把代码理�
 | 终端界面 | Textual、Rich | 提供组件化 TUI、键盘事件、Markdown 和流式渲染能力 |
 | 模型接入 | Anthropic SDK、OpenAI SDK | 覆盖主要模型供应商，并保留 OpenAI-compatible 扩展能力 |
 | 工具协议 | MCP SDK、`httpx` | 支持 stdio 和 streamable HTTP 外部工具服务器 |
-| 数据校验 | Pydantic 2 | 约束配置、工具参数和动态 MCP 参数 |
+| 数据校验 | Pydantic 2 | 校验工具参数和动态 MCP 参数；YAML 配置由 `validator.py` 校验 |
 | 配置与持久化 | PyYAML、JSON/JSONL/Markdown | 适合本地单用户场景，文件可读且便于审计 |
 | 并行隔离 | Git Worktree | 为子 Agent 提供独立目录和分支，降低代码修改冲突 |
+| 可选服务 | AgentRuntime、FastAPI/SSE | 提供 Run 状态持久化、事件回放和 HTTP 任务接口 |
 | 测试与依赖 | pytest、pytest-asyncio、uv | 覆盖异步逻辑并统一依赖管理 |
 
 选择 Python 主要是因为 SDK 和异步生态成熟，Agent 编排迭代速度快；Textual 可以在不引入 Web 服务的情况下提供完整交互界面；本地 JSONL 和 Markdown 则避免了单机工具引入数据库的额外运维成本。
@@ -55,7 +56,8 @@ CLI/TUI
   -> Agent.run
   -> 构建 system prompt 和上下文
   -> LLMClient.stream
-  -> StreamCollector 归一化事件
+  -> LLMClient 归一化供应商事件
+  -> StreamCollector 汇总响应并转换 Agent/UI 事件
   -> PermissionChecker / Hook
   -> ToolRegistry 执行工具
   -> 工具结果写回会话
@@ -86,7 +88,7 @@ Agent 只关心 `TextDelta`、`ThinkingDelta`、`ToolCallComplete`、`StreamEnd`
 
 **参考答案：**
 
-不同供应商对文本增量、思考内容、工具调用增量和结束原因的事件定义不同。如果 UI 和 Agent 分别适配每种协议，会产生大量分支。`StreamCollector` 把底层流转换为项目自己的事件，例如文本增量、思考增量、工具调用完成和流结束，同时累计响应文本、工具调用和 token 信息。
+不同供应商对文本增量、思考内容、工具调用增量和结束原因的事件定义不同。如果 UI 和 Agent 分别适配每种协议，会产生大量分支。`LLMClient` 先把供应商原始流转换为统一的 `StreamEvent`；`StreamCollector` 再转换为 Agent/UI 事件，同时累计响应文本、工具调用和 token 信息。
 
 这样 UI 只消费统一事件，Agent 也不需要知道底层是哪个 SDK。异常、重试和测试也可以在协议层与业务层分别覆盖。
 
@@ -254,3 +256,242 @@ SDK 只解决了模型请求和协议通信，项目的工程价值在于把不�
 3. 不要虚构 QPS、准确率、节省成本等指标；如果没有真实数据，可以说明当前项目是本地工具，并给出后续如何测量。
 4. 被追问时优先引用真实模块，例如 `mewcode/agent.py`、`mewcode/client.py`、`mewcode/permissions/`、`mewcode/context/`、`mewcode/teams/` 和 `mewcode/worktree/`。
 5. 对安全问题要主动承认边界：`bypass` 模式、MCP 外部内容、命令执行和 Prompt Injection 都需要隔离和审计，不能声称仅靠 Prompt 就能彻底解决。
+
+## 八、补充第一轮：可扩展性与交互层
+
+### 23. 记忆系统是如何设计的？用户级和项目级记忆有什么区别？如何防止记忆膨胀和污染？
+
+**参考答案：**
+
+记忆由 `mewcode/memory/` 的 `MemoryManager` 负责，分两级存储：用户级放在 `~/.mewcode/memories.md`，跨项目生效；项目级放在项目根目录 `.mewcode/memories.md`，只描述当前仓库。提取流程是：用 `MEMORY_EXTRACTION_PROMPT` 让模型分析对话，按四个固定分类输出——"用户偏好、纠正反馈"归入用户级，"项目知识、参考资料"归入项目级。注入流程是：新会话启动时由 `recall` / `instructions` 把相关记忆拼入 system prompt。
+
+防膨胀靠三条硬规则：已有相同含义的条目不重复添加；每条记忆必须是一行 `- ` 开头的具体内容；没有内容的分类直接留空，不写占位符。防污染靠提取范围约束：只沉淀偏好、纠正、项目事实这类稳定信息，临时任务状态不进长期记忆。另外记忆是纯 Markdown，用户可以直接审查、编辑、删除，形成人机共同维护的可审计机制——这比黑盒向量记忆更适合本地工具。
+
+### 24. Hook 系统覆盖哪些事件？`pre_tool_use` 拦截如何实现？它和权限系统的边界在哪里？
+
+**参考答案：**
+
+`mewcode/hooks/events.py` 定义了系统、会话、轮次、消息和工具等生命周期事件。Hook 由三部分组成：`loader` 加载配置、`conditions` 判断事件与工具/路径是否匹配、`executors` 执行动作。`pre_tool_use` 可以 reject 直接阻断工具执行；`pre_send` 可以在请求发给 LLM 前注入额外提示；`post_*` 事件适合做日志和审计。当前 `agent` action 仍是 stub，不能作为已实现的 Hook 编排能力介绍。
+
+与权限系统的边界：`PermissionChecker` 是内置权限决策引擎，按当前模式与规则裁决工具调用；Hook 是用户/团队的可编程扩展点。Hook 拒绝会先阻断执行，Hook 本身不能覆盖随后权限检查的拒绝结果。`bypass` 等模式可由配置选择，因此不能声称权限策略无法被配置改变。
+
+### 25. Skill 的加载机制是什么？三级来源同名冲突如何处理？Skill、Slash Command、MCP 工具有什么区别？
+
+**参考答案：**
+
+`SkillLoader` 按优先级从三个来源扫描：项目级 `.mewcode/skills` > 用户级 `~/.mewcode/skills` > 内置 builtins。同名 Skill 由高优先级来源先注册，低优先级来源直接跳过，即"项目覆盖用户、用户覆盖内置"，解析结果带缓存避免重复读盘。Skill 文件是 Markdown + frontmatter，`parser.py` 负责解析元数据和正文，解析失败有明确的 `SkillParseError`。
+
+三者的定位区别：Skill 是 **prompt 级扩展**，向模型注入一套领域工作流或知识，改变"模型怎么做事"；Slash Command 是**用户主动触发的确定性操作**（如 `/compact`、`/rewind`），不经过模型决策；MCP 工具是**能力级扩展**，通过外部进程给 Agent 增加新的可执行动作。一句话概括：Skill 教方法，Command 给指令，MCP 给工具。
+
+### 26. System Prompt 是如何工程化管理的？
+
+**参考答案：**
+
+`mewcode/prompts.py` 把 system prompt 当作可组合的 section 集合而不是一个大字符串：每个 `PromptSection` 携带 priority，`PromptBuilder` 按优先级顺序插入——0 身份、10 系统规则、20 任务准则、30 谨慎操作、40 工具使用、50 语气风格、60 文本输出，`build_system_prompt` 做最终组装。priority 之间留了间隔（10 的步长），新增 section 可以插到任意两个既有 section 之间，不需要整体重排。
+
+这样做的好处：section 顺序稳定，输出可以做单元测试断言；修改某一段的 diff 清晰可 review；子 Agent 的 prompt（如 `teams/coordinator.py` 里的协调者提示词）放在所属模块旁边就近维护，避免所有 prompt 堆在一个巨型文件里。核心治理原则是 **prompt 即代码**：要 review、要测试、要版本管理，而不是散落的魔法字符串。
+
+### 27. TUI 为什么用 `NoAltScreenDriver` 而不是标准的全屏终端应用？
+
+**参考答案：**
+
+标准 Textual 应用会切入 alternate screen，退出后屏幕恢复原状，用户无法在终端里滚动回看 Agent 的历史输出，也没法用终端原生的复制选择。`mewcode/driver.py` 的 `NoAltScreenDriver` 去掉了 alt screen 切换码，并在进入应用模式前输出等于终端行数的空行，把已有内容推入 scrollback，让 Textual 在主缓冲区上渲染——所有输出永久留在终端滚动区，与 Claude Code 的渲染行为对齐。它根据 `sys.platform` 自动选择 `WindowsDriver` 或 `LinuxDriver` 作为基类，屏蔽平台终端差异。
+
+取舍在于：放弃了一部分全屏应用能力（独立滚动区、完整鼠标接管），换来终端原生的可回看、可复制体验。对一个"陪伴式编程工具"来说，输出的可追溯性比沉浸式 UI 更重要——用户经常需要回滚查看 Agent 十轮之前改了什么，这个设计决策直接服务于该场景。
+
+## 九、补充第二轮：回滚恢复、成本控制、评测与并发细节
+
+### 28. Rewind 功能是怎么实现的？文件快照机制有哪些细节？
+
+**参考答案：**
+
+`mewcode/filehistory/history.py` 的 `FileHistory` 在每轮用户消息前创建快照（Snapshot），记录 `message_index`、用户文本和该轮涉及文件的备份。备份命名用文件路径 sha256 哈希前 16 位加版本号（`{hash}@v{version}`），既避免在备份目录中直接暴露原始路径，也避免不同路径的同名文件互相覆盖；`MAX_SNAPSHOTS = 100` 限制单会话快照数量，防止长会话无限占用磁盘。快照写入在 `agent.py` 主循环中触发，即"先留退路，再让 Agent 动手"。
+
+`/rewind` 命令支持三种回退粒度：对话和文件一起恢复、只回退对话（文件保持现状）、只恢复文件（对话继续）——分别对应"整个方向错了""想换个说法重试""文件被改坏但讨论要保留"三种真实场景。
+
+定位上它与权限系统互补：权限是事前拦截，Rewind 是事后恢复。加上 Git Worktree 的事中隔离，项目形成"事前确认、事中隔离、事后回滚"三层安全网，这是对"LLM 会犯错"这一事实的系统性工程回应。
+
+### 29. 如何控制 token 成本？工具 schema 延迟加载和 ToolSearchTool 是怎么工作的？
+
+**参考答案：**
+
+每轮请求的成本大头是两个：携带的全部工具 schema 和完整对话历史。项目分三层控制：
+
+1. **schema 延迟加载**：内置工具几十个，加上 MCP 服务器注册的外部工具，如果每个 schema 都随每轮请求发送，仅工具定义就可能占数千 token。项目把部分工具注册为 deferred，其 schema 不随请求下发；`ToolSearchTool`（`tools/impl/tool_search.py`）提供两个入口——`search_deferred` 按关键词模糊搜索、`find_deferred_by_names` 按名字精确查找，模型需要时先搜索，命中的 schema 才动态加载进当前协议的请求。这和"先查目录再翻书"是一个思路；
+2. **上下文压缩**：接近阈值时把旧前缀结构化摘要，只保留最近 10 轮且不少于 10k token 的原文（第 11 题已展开）；
+3. **FileCache**：`cache.py` 用线程安全的内存缓存保存读过的文件内容，减少重复读盘和重复注入。
+
+量化方式：对比开启/关闭延迟加载时"单任务平均 input token"和"平均迭代轮数"。要注意代价：延迟加载多了一次搜索往返，对只用 2-3 个工具的简单任务反而可能更慢，所以核心工具（读写文件、执行命令）应保持常驻，只对长尾工具做 deferred——这是成本与延迟的权衡，不是一刀切。
+
+### 30. 如何为这种 Agent 项目建立评测体系？会看哪些指标？
+
+**参考答案：**
+
+原则是**分层评测，把非确定性压缩到最小范围**：
+
+- **协议层（确定性）**：给 `StreamCollector` 喂固定的 Provider 事件流，断言归一化输出的事件序列和 token 统计，任何供应商适配回归都能被抓住；
+- **决策层（确定性）**：用 fake LLM client 返回预设的工具调用序列，验证 Agent 行为——权限判定是否符合模式矩阵、批次拆分是否正确、压缩后 tool_use/tool_result 是否配对、重试是否分类正确。这层是 CI 门禁的主体；
+- **端到端任务层（非确定性）**：真实模型跑真实任务集（修指定 bug、加指定功能），用产物 diff 和测试通过率评判。因为模型输出随机，必须多次采样看分布（如 5 次跑取完成率），单次成功或失败都不作数。
+
+指标分两组：**效果指标**——任务完成率、平均迭代轮数、平均 token 成本；**护栏指标**——权限误判数（该拦没拦/不该拦却拦）、Rewind 触发次数、压缩失败率、任务卡死率。护栏的意义是防止"为提升完成率而放松安全"的假优化：完成率上升但权限误判也上升，不能算改进。
+
+### 31. 非交互模式如何复用同一套 Agent 栈？CI 集成要注意什么？
+
+**参考答案：**
+
+分层设计让 TUI 成为可选件：`-p` 参数由 `mewcode/__main__.py` 装配 Agent，不创建 Textual 应用；`run_to_completion()` 复用 Agent 核心、工具和权限组件，将事件收集为最终结果。可选 HTTP 服务则由 `runtime/bootstrap.py` 装配 `AgentRuntime`。目前三种入口各自负责依赖装配，不能说它们都通过 Runtime 启动或工具配置完全一致。
+
+CI 集成四个注意点：
+
+1. **权限策略必须显式声明**：非交互模式对需要人工确认的操作直接拒绝（避免永久阻塞），所以 CI 要么在隔离容器里用 bypass 模式，要么预先配置好路径白名单和 Hook 规则；
+2. **结构化输出与退出码**：上游 pipeline 依赖退出码判断成败，错误要分类（模型错误/权限拒绝/工具失败），不能一律返回 1；
+3. **任务级超时**：CI 中卡死会占住 runner，需要整体 wall-clock 上限；
+4. **外部依赖超时**：MCP 服务器和命令工具在 CI 网络环境下更要配超时和失败降级。
+
+### 32. 单线程事件循环的项目里，为什么 `FileCache` 和 `FileHistory` 会出现线程锁？取消传播如何做？
+
+**参考答案：**
+
+asyncio"单线程无竞态"的前提是共享状态只在事件循环内访问。但 `FileHistory` 的快照写入和 `FileCache` 的文件内容缓存可能同时被事件循环协程和同步代码路径（如通过 `to_thread` 包装的阻塞文件 IO、后台线程）访问，跨线程读写同一个 dict 存在真实竞态，所以两者都用 `threading.Lock` 保护。使用原则要分清：**跨线程共享状态用线程锁，IO 并发用事件循环**，且绝不能在协程里持有阻塞锁去等待线程逻辑，否则会卡死整个事件循环。
+
+取消传播是三件事：
+
+1. Ctrl+C 或任务取消时，`CancelledError` 要沿 await 链向下传播，`asyncio.gather` 的批次要能整体取消；
+2. 取消必须传导到进程外——命令工具要 kill 子进程（含进程组，否则孙进程泄漏），MCP 要关闭 stdio 子进程和 HTTP 会话，只做 task.cancel() 会出现"任务取消了但进程还在跑"；
+3. `create_task` 创建的后台任务如果异常且没人 await，异常会被静默吞掉，需要统一挂 done callback 记录日志——这是 asyncio 最容易被忽略的坑。
+
+## 十、补充第三轮：配置体系、多模型策略、跨平台工程与产品指标
+
+### 33. 配置系统是如何设计的？API key 等敏感信息如何安全管理？
+
+**参考答案：**
+
+配置以 YAML 承载，加载为 `ProviderConfig` 等 dataclass（protocol、base_url、model、api_key），由 `validator.py` 做集中校验：`VALID_PROTOCOLS`、`VALID_PERMISSION_MODES`、`VALID_TEAMMATE_MODES` 约束枚举值，`lookup_model_context_window` 按模型名查上下文窗口、查不到回退 `DEFAULT_CONTEXT_WINDOW`，非法配置在启动时抛 `ConfigError`。设计原则是 **fail fast**：配置错误必须在启动时暴露，而不是运行到一半在某个深层模块炸掉。
+
+密钥管理：配置文件支持 `${ENV_VAR}` 语法，加载时解析环境变量；Anthropic 和 OpenAI 协议也有约定的默认 API Key 环境变量。推荐在配置中写环境变量引用，并将本地覆盖文件加入 `.gitignore`。当前配置模型仍接受直接写入 `api_key`，因此不能声称密钥“永远不落盘”或配置文件一定可安全提交；需要用户按部署环境管理密钥。
+
+### 34. 多模型策略如何配置？什么场景用大模型、什么场景可以用小模型？
+
+**参考答案：**
+
+每个 Provider 配置声明 protocol / model / base_url，协议覆盖 anthropic、openai、openai-compat 三种；openai-compat 意味着任何 OpenAI 兼容接口的网关、代理或自部署服务都能接入，扩展面最宽。
+
+场景分层的思路是按**任务熵**分配模型：
+
+- **主对话与复杂实现**用大模型——路径开放的决策任务，质量直接影响任务完成率，是花钱的重点；
+- **上下文压缩摘要**可以降级——输出被 `SUMMARY_PROMPT` 的固定章节强约束，是模式化任务，且压缩在长会话中高频触发，是成本最敏感的调用点；
+- **Explore 等只读子 Agent** 做检索归纳，也可以配小模型，读错了不产生副作用，主 Agent 汇总时还有一层把关。
+
+切换自由的前提是统一事件模型（第 5 题）：Agent 层不感知 Provider，换模型只改配置不改业务代码。回答时的加分点是承认边界：小模型在工具调用格式遵循度上通常更弱，降级前必须用第 30 题的决策层评测验证，不能只看价格。
+
+### 35. 跨平台支持踩过什么坑？uv 在工程链路中起什么作用？
+
+**参考答案：**
+
+终端行为是最大的平台差异源：`driver.py` 显式按 `sys.platform` 选择 `WindowsDriver` 或 `LinuxDriver` 作为基类。Windows 的坑集中在三处：终端 ANSI 转义支持不完整、scrollback 行为与 Linux 终端不同（这正是 NoAltScreenDriver 要分平台处理的原因）、进程信号语义不同（没有 SIGTERM，取消传播时终止子进程要用 Windows API 而不是发信号）。跨平台的子进程清理逻辑必须分平台实现，否则"取消后进程残留"只在其中一个平台复现。
+
+版本基线选 Python 3.11+ 是为了 asyncio 性能改进和 `StrEnum` 等原生支持（`hooks/events.py` 的 `LifecycleEvent` 就用了 StrEnum）。uv 负责统一的依赖解析和锁文件，安装速度快且可复现——对一个本地 CLI 工具，"用户一条命令装好、装出来的环境和你测试的一致"本身就是产品体验的一部分，所以依赖工具链选型也是产品决策而不是纯工程偏好。测试链路用 pytest + pytest-asyncio 覆盖异步逻辑。
+
+### 36. 产品视角：如果让你为 MewCode 定义北极星指标，你会怎么定？
+
+**参考答案：**
+
+本地单机工具没有传统 DAU 概念，指标必须围绕"真实交付了价值"来定义。先列候选：任务完成率（`run_to_completion` 产物通过验证的比例）、周活跃会话数、权限"始终允许"接受率（用户对 Agent 的信任度代理指标）、单任务平均 token 成本。
+
+我的选择是**每周完成并通过验证的任务数**：它同时包含使用频度和交付质量，能避免两类假繁荣——"用得很多但都在失败"（活跃度高、完成率低）和"成功率很高但没人用"（完成率高、样本极少）。"通过验证"限定词很关键：模型声称完成不算数，要有测试通过或 Verification Agent 检查作为客观依据，这与第 20 题"提升验证闭环"的迭代方向一致。
+
+护栏指标四个：权限误判数、Rewind 触发次数、auto-compact 熔断触发次数、任务卡死率——保证北极星的增长不是以安全和体验劣化为代价。数据来源是会话 JSONL 和结构化事件，不需要额外埋点体系；但本地工具必须有隐私自觉：任何指标上传都应 opt-in，默认只在本地聚合。
+
+### 37. Slash Command 已经有 15+ 个，如何设计信息架构和可发现性？
+
+**参考答案：**
+
+项目已有 `/help`、`/compact`、`/clear`、`/plan`、`/session`、`/memory`、`/mcp`、`/status`、`/rewind`、`/permission`、`/tasks`、`/trace`、`/worktree`、`/skill`、`/review` 等命令。治理思路分三层：
+
+1. **按领域分组**：会话域（`/session` `/rewind` `/compact` `/clear`）、能力域（`/mcp` `/skill` `/memory`）、运行域（`/status` `/trace` `/tasks` `/permission` `/worktree`）。`/help` 输出分组索引而不是平铺 15 行列表——用户是按"我现在想干什么"找命令的，不是按字母序；
+2. **每个命令自带 usage 与容错**：命令注册时声明 usage 字符串（如 `/rewind [checkpoint_number] [option]`），非法输入给出最接近的建议而不是静默失败；
+3. **场景内引导（最重要的可发现性手段）**：命令在用户需要它的时刻主动出现——压缩熔断时提示 `/compact`，权限被拒时提示 `/rewind` 或 `/permission`，任务失败时提示 `/trace`。用户不需要背命令表，系统在正确的时机递上正确的工具。
+
+新增命令的判断标准：只有"高频且确定性"的操作才值得做成命令；低频操作交给自然语言 + Agent 分发，避免命令表膨胀稀释每个命令的价值。这也是 Skill（教模型方法）和 Command（给系统指令）的分界线在实际功能规划中的应用。
+
+## 十一、补充第四轮：安全纵深、协议序列化与框架选型
+
+### 38. 路径沙箱如何防止 `../` 穿越和 symlink 逃逸？要新建的文件还不存在，怎么检查？
+
+**参考答案：**
+
+`permissions/sandbox.py` 维护一个允许根列表：默认是项目根 + 系统临时目录（`tempfile.gettempdir()`），可追加额外目录。检查流程分四步：
+
+1. `expanduser()` 展开 `~`，相对路径以项目根为基准拼成绝对路径；
+2. `resolve(strict=True)` 解析真实路径——这一步会**跟随符号链接**，所以"项目内放一个指向 `/etc` 的 symlink"这类逃逸会被解析成真实目标后拒绝；
+3. 目标不存在时（典型场景：Write 新文件），`strict=True` 会抛 OSError，此时采用"逐步向上找最近已存在祖先"策略：解析祖先目录的真实路径，再拼回剩余相对段——保证新建文件路径同样经过 symlink 规范化；
+4. 对每个允许根做 `relative_to` 判断，全部不匹配则拒绝。
+
+`../` 穿越在第 1-2 步就被消化：`absolute()` + `resolve()` 会把 `project/../secret` 规范化成真实绝对路径，再和允许根比对，字符串层面的花招不起作用。核心原则：**永远比对规范化后的真实路径，绝不比对用户输入的原始字符串**。
+
+### 39. 危险命令是怎么识别的？正则黑名单能被绕过吗？
+
+**参考答案：**
+
+`permissions/dangerous.py` 提供两条互补防线，对应五层权限体系的第 1、1b 层：
+
+- **安全白名单（自动放行）**：`is_safe_command()` 先查命令里是否含 `|`、`;`、`&&`、`>`、`$(`、反引号等串联符号——出现任何一个直接判定不安全，因为白名单命令接上管道就可能有任意副作用（如 `cat x | sh`）；通过第一道后再比对 `_SAFE_COMMANDS`（ls、grep、git status/log/diff 等只读命令的 frozenset）。双防线都过才自动放行，减少无谓的确认打扰；
+- **危险黑名单（强制拦截）**：`DangerousCommandDetector` 用 8 条正则识别高危模式——`rm -rf /`、`mkfs.`、`dd if=...of=/dev/`、`chmod -R 777 /`、fork bomb、`curl|sh`/`wget|sh` 管道执行远程脚本、覆盖磁盘设备，并支持 `extra_patterns` 追加团队自定义规则。
+
+诚实的边界：正则黑名单**一定能被绕过**（base64 编码、写进脚本文件再执行、变量拼接）。所以它在体系里的定位不是"绝对安全屏障"，而是"拦截最常见的灾难性误操作 + 降低确认频率的体验优化"。真正的安全兜底是后面的权限模式、人工确认和沙箱层——这也是为什么不能只靠黑名单，五层缺一不可。
+
+### 40. Anthropic 和 OpenAI 的消息格式差异具体在哪？`serialization.py` 如何做请求序列化？
+
+**参考答案：**
+
+`serialization.py` 提供三种消息构建函数，由 `build_messages(messages, protocol)` 按协议分发：
+
+- `build_anthropic_messages`：content 是块数组，thinking 块（`{"type": "thinking", ...}`）和 tool_use 块原生保留——Anthropic 的 extended thinking 要求把上一轮的 thinking 块回传，工具结果是独立的 `user` 角色 + `tool_result` 块；
+- `build_chat_completion_messages`：助手消息是 `{"role": "assistant", "content": ..., "tool_calls": [...]}`，工具结果用 `role: "tool"` + tool_call_id 关联；**thinking 块被直接跳过**，因为 Chat Completions 协议不支持该概念；
+- `build_openai_input`：对接 OpenAI Responses API 的输入格式。
+
+差异的本质是三件事：思考内容的有无与回传义务、工具调用的挂载位置（content 块 vs 顶层字段）、工具结果的角色建模（user 内嵌块 vs 独立 tool 角色）。适配层把这些差异收敛在纯函数里，Agent 和 ConversationManager 只操作协议无关的 `Message` 对象。测试策略也因此简单：同一段内部消息序列，分别断言三种协议的输出结构，任何格式回归都能被单测抓住。
+
+### 41. 子 Agent 的工具权限是如何约束的？为什么要做多层过滤？
+
+**参考答案：**
+
+`agents/tool_filter.py` 实现五层过滤，本质是**最小权限原则**在 Agent 体系上的落地：
+
+- 第 0 层：当前 `resolve_agent_tools()` 对名称以 `mcp__` 开头的工具先分离，最后重新加入，因此它们绕过后续子 Agent 工具过滤；这是当前实现边界，不应表述为安全保证；
+- 第 1 层：全局禁用——所有子 Agent 都不能用 `Agent`（防止无限嵌套派生）、`AskUserQuestion`（只有主 Agent 能直接问用户，否则多个后台子 Agent 同时弹问题会打断用户且无法归属）、`EnterPlanMode`/`ExitPlanMode` 等；
+- 第 2 层：自定义 Agent 的额外限制；
+- 第 3 层：后台任务白名单——后台运行的 Agent 只能用白名单内工具，因为没人盯着它做实时确认；
+- 第 4 层：Agent 定义文件（frontmatter）里声明的 allow/deny 列表。
+
+多层的原因：约束的来源不同——有的来自产品规则（不许嵌套），有的来自运行环境（后台无人值守），有的来自 Agent 角色定义。当前过滤针对内置工具较细，但 MCP 工具存在上述豁免，因此不能笼统宣称“所有子 Agent 都无法越权”；后续应将 MCP 工具纳入相同的角色和权限审查。
+
+### 42. 为什么自研 Agent 框架，而不是基于 LangChain / LangGraph 开发？
+
+**参考答案：**
+
+先给判断框架：选框架还是自研，取决于**产品核心体验需要多深的定制**与**框架抽象是否恰好匹配你的执行模型**。
+
+LangGraph 的图模型适合节点和边预先确定的 Workflow（这正是第 5 题说的"生产 Agent 退化成 Workflow"的技术载体），但 MewCode 的主干是开放式 ReAct 循环，且大量复杂度在图模型之外：流式事件归一化到 TUI 的逐 token 渲染、权限决策中间的人工确认插入点、compact boundary 的会话重建、tool_use/tool_result 配对约束、五层工具过滤。这些在框架里要么找不到对应抽象，要么要为框架的通用性付出理解成本——用 LangChain 的 Agent 抽象反而要先学会"如何绕过它"。
+
+自研换来的三样东西：每一层行为完全可解释（排查第 18 题那类卡死问题时能直接看到 await 点）；协议硬约束（如 thinking 回传、配对校验）可以显式写成代码而不是赌框架处理了；依赖面小，升级不受框架 breaking change 牵制。
+
+代价也要承认：轮子自己造（重试、缓存、观测都要自己补），生态红利为零，单人维护成本高。所以结论不是"框架不好"，而是：做**深度定制的终端产品**时自研合理，做**快速验证的业务应用**时 LangGraph 类框架仍然是正确选择——面试中能说出这个分界，比站队任何一边都加分。
+
+## 十二、当前可选 Runtime 与 DAG 能力
+
+### 43. `AgentRuntime` 与 TUI 的关系是什么？当前 HTTP 接口有哪些？
+
+**参考答案：**
+
+`AgentRuntime` 是不依赖 Textual 的后台 Run 服务，由 `mewcode/runtime/bootstrap.py` 为可选 HTTP 服务装配。它通过 `RunStore` 保存 Run 快照和 JSONL 事件，支持任务状态查询、超时、取消、重试和事件回放。FastAPI 适配层目前只提供提交 Run、查询 Run、取消 Run、订阅 SSE 事件四类接口，SSE 可用 `after` 游标补读已保存事件；回放与实时订阅之间尚存在竞争窗口。
+
+TUI 和 `-p` CLI 目前分别在 `mewcode/app.py` 和 `mewcode/__main__.py` 装配 Agent，并不通过 `AgentRuntime` 启动；三种入口共享 Agent 等核心组件，但工具注册与交互能力不能笼统认为完全一致。当前 HTTP 服务适合本地单用户使用，尚无多用户认证或远程权限审批接口。
+
+### 44. DAG 多 Agent 编排具体实现了什么？有什么边界？
+
+**参考答案：**
+
+`DAGScheduler` 校验节点 ID 和依赖关系、检测环、并行执行已就绪节点，并记录节点状态、失败传播和重试结果；`DAGCreate` 工具通过现有 `AgentTool` 执行各节点，`DAGStatus` 可查询保存的运行快照。下游节点接收的是以上游节点 ID 标记的文本结果，便于完成“探索 → 实现 → 测试”一类依赖任务。
+
+目前 DAG 运行快照不等于进程重启后自动从节点断点继续执行，也没有自动验证门禁和结构化产物协议；这些属于可以进一步实现的可靠性能力。

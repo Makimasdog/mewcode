@@ -1,8 +1,16 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
+"""
+task_list.py — 任务列表工具
+================================================
 
+【这个模块做什么】
+列出团队任务板中的所有任务，支持按状态和负责人过滤。
+
+【状态图标】
+- ○ pending: 待处理
+- ◐ in_progress: 进行中
+- ● completed: 已完成
+- ✕ blocked: 被阻塞
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,11 +24,13 @@ if TYPE_CHECKING:
 
 
 class TaskListParams(BaseModel):
-    status: str | None = None
-    assignee: str | None = None
+    """TaskList 参数模型"""
+    status: str | None = None     # 按状态过滤
+    assignee: str | None = None   # 按负责人过滤
 
 
 class TaskListTool(Tool):
+    """任务列表工具 — 列出团队任务板中的任务"""
     name = "TaskList"
     description = (
         "List all shared tasks in the team's task board. "
@@ -54,6 +64,7 @@ class TaskListTool(Tool):
             filter_str = f" (filters: {', '.join(filters)})" if filters else ""
             return ToolResult(output=f"No tasks found{filter_str}")
 
+        # 状态图标映射
         status_icons = {
             "pending": "○",
             "in_progress": "◐",

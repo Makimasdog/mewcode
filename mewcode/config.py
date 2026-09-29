@@ -1,7 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 from __future__ import annotations
 
 import os
@@ -50,7 +46,9 @@ class ProviderConfig:
 
     def resolve_api_key(self) -> str:
         if self.api_key:
-            return self.api_key
+            resolved = resolve_env_vars(self.api_key)
+            # A missing environment variable must not be sent as a literal API key.
+            return "" if _ENV_VAR_RE.search(resolved) else resolved
         env_var = _ENV_KEY_MAP.get(self.protocol, "")
         return os.environ.get(env_var, "")
 
