@@ -1,4 +1,5 @@
 from mewcode.memory.auto_memory import MemoryManager
+from mewcode.memory.store import MemoryItem, MemoryStore
 from mewcode.memory.instructions import load_instructions, process_includes
 from mewcode.memory.recall import (
     RelevantMemory,
@@ -20,6 +21,8 @@ from mewcode.memory.session import (
 
 __all__ = [
     "MemoryManager",
+    "MemoryItem",
+    "MemoryStore",
     "RelevantMemory",
     "ResumeResult",
     "Session",

@@ -9,6 +9,7 @@
 2. [`mewcode.evidence.md`](mewcode.evidence.md)：节点、关系和持久化行为的源码证据。
 3. [`mewcode.structurizr.dsl`](mewcode.structurizr.dsl)：C4 的可渲染源文件。
 4. [`mewcode-runtime-topology.dot`](mewcode-runtime-topology.dot)：三种进程入口、本地文件和外部网络的运行时拓扑。
+5. [`memory-system-upgrade.md`](memory-system-upgrade.md)：记忆系统结构化存储和兼容迁移说明。
 
 ## 当前系统边界
 

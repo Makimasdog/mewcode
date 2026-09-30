@@ -165,7 +165,7 @@ uv run mewcode --mode bypass
 | `/compact` | `/c` | 压缩上下文 |
 | `/plan` | `/p` | 切换到 Plan 模式 |
 | `/session` | | 会话管理（列表/恢复/删除） |
-| `/memory` | | 记忆管理 |
+| `/memory` | | 记忆管理（list/clear/edit/import/search/show/审核） |
 | `/mcp` | | 查看 MCP 服务器状态 |
 | `/permission` | | 权限规则管理 |
 | `/status` | `/s` | 显示当前状态 |
