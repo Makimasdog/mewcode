@@ -1177,6 +1177,19 @@ class MewCodeApp(App):
         if self.memory_manager is None or self._selected_provider is None:
             return ""
 
+        # In structured-only mode, the Markdown file scanner has no records
+        # to inspect. Use the repository's deterministic search path while
+        # retaining the existing LLM selector for legacy/dual mode.
+        if getattr(self.memory_manager, "storage_mode", "legacy") == "structured":
+            items = self.memory_manager.search(query, limit=5)
+            if not items:
+                return ""
+            lines = [
+                f"## Memory: {item.id} ({item.scope}/{item.type})\n{item.content}"
+                for item in items
+            ]
+            return "\n\n".join(lines)
+
         provider = self._selected_provider
         user_dir = self.memory_manager.user_mem_dir
         project_dir = self.memory_manager.project_mem_dir

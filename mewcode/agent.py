@@ -542,7 +542,6 @@ class Agent:
     def set_skill_catalog(self, catalog: str) -> None:
         self._skill_catalog = catalog
 
-
     def set_agent_catalog(self, catalog: str, catalog_list: list[tuple[str, str]] | None = None) -> None:
         self._agent_catalog = catalog
         if catalog_list is not None:
@@ -1003,7 +1002,6 @@ class Agent:
                 for he in self._drain_hook_events():
                     yield he
             yield TurnComplete(turn=iteration)
-
 
     def _consume_mailbox(self, conversation: ConversationManager) -> None:
         if not self.team_name or not self._team_manager:

@@ -1,3 +1,46 @@
+"""
+coordinator.py — 协调者模式（Manager-Worker 架构）
+=============================================================
+
+【这个模块做什么】
+实现「协调者模式」：让主 Agent 扮演 Manager 角色，将实际工作委派给 Worker 子 Agent。
+
+协调者不亲自写代码、不亲自调试，而是：
+1. 理解用户需求
+2. 拆分任务并派发给 Worker
+3. 综合 Worker 的结果
+4. 向用户汇报
+
+【什么是协调者模式】
+普通模式: Agent 自己思考 + 自己执行
+协调者模式: Agent 只思考 + 调度，Worker 负责执行
+
+类比：
+- 普通模式 = 全栈工程师（什么都自己做）
+- 协调者模式 = 技术经理（分配任务给团队成员）
+
+【启用方式】
+需要同时满足两个条件：
+1. 配置中 enable_coordinator_mode = true
+2. 环境变量 MEWCODE_COORDINATOR_MODE = 1/true/yes
+
+为什么需要环境变量？
+- 协调者模式改变了 Agent 的行为方式
+- 环境变量作为「安全开关」，防止意外启用
+- 会话恢复时自动匹配之前的模式
+
+【核心组件】
+- is_coordinator_mode(): 检查是否启用协调者模式
+- match_session_mode(): 会话恢复时匹配模式
+- get_coordinator_system_prompt(): 协调者的系统提示词
+- get_coordinator_user_context(): Worker 工具上下文
+
+【设计亮点】
+1. 双重开关: 配置 + 环境变量，防止意外启用
+2. 会话匹配: 恢复会话时自动切换到正确模式
+3. 动态 Agent 目录: 系统提示词中列出可用的 Worker 类型
+4. 详细工作流指导: 包含研究→综合→实现→验证的完整流程
+"""
 from __future__ import annotations
 
 import os
@@ -5,6 +48,17 @@ from typing import Any
 
 
 def is_coordinator_mode(enable_flag: bool = False) -> bool:
+    """
+    检查是否启用协调者模式。
+    
+    需要同时满足：
+    1. enable_flag=True（配置中启用）
+    2. 环境变量 MEWCODE_COORDINATOR_MODE 为 1/true/yes
+    
+    为什么需要环境变量？
+    - 协调者模式会显著改变 Agent 行为
+    - 环境变量作为「显式确认」，防止意外启用
+    """
     if not enable_flag:
         return False
     val = os.environ.get("MEWCODE_COORDINATOR_MODE", "").lower()
@@ -15,6 +69,16 @@ def match_session_mode(
     session_mode: str | None,
     enable_flag: bool = False,
 ) -> str | None:
+    """
+    会话恢复时匹配协调者模式。
+    
+    场景：用户恢复一个之前的会话，那个会话可能是在协调者模式下运行的。
+    这个函数会检查会话的模式，并自动切换当前环境以匹配。
+    
+    返回:
+    - None: 无需切换
+    - str: 切换说明（用于通知用户）
+    """
     if not session_mode:
         return None
 
@@ -22,8 +86,9 @@ def match_session_mode(
     session_is_coordinator = session_mode == "coordinator"
 
     if current == session_is_coordinator:
-        return None
+        return None  # 模式一致，无需切换
 
+    # 切换环境变量以匹配会话模式
     if session_is_coordinator:
         os.environ["MEWCODE_COORDINATOR_MODE"] = "1"
     else:
@@ -37,6 +102,22 @@ def match_session_mode(
 
 
 def get_coordinator_system_prompt(agent_catalog: list[tuple[str, str]] | None = None) -> str:
+    """
+    获取协调者的系统提示词。
+    
+    这是协调者模式的「灵魂」——它告诉 Agent 如何扮演 Manager 角色。
+    
+    提示词包含：
+    1. 角色定义: 你是协调者，不是执行者
+    2. 工具说明: Agent/SendMessage/TaskStop/TeamCreate 等
+    3. 工作流: 研究→综合→实现→验证
+    4. 并发策略: 读任务并行，写任务串行
+    5. 验证分离: 实现者不能验证自己的代码
+    6. Prompt 编写指南: Worker 看不到对话，必须自包含
+    
+    参数:
+    - agent_catalog: 可用的 Worker 类型列表 [(name, description), ...]
+    """
     if agent_catalog:
         agent_lines = "\n".join(f"- **{name}**: {desc}" for name, desc in agent_catalog)
     else:
@@ -232,6 +313,12 @@ You:
 def get_coordinator_user_context(
     worker_tools: list[str] | None = None,
 ) -> dict[str, str]:
+    """
+    获取 Worker 工具上下文（注入到协调者的系统提示词中）。
+    
+    协调者需要知道 Worker 有哪些工具可用，这样才能给出正确的指导。
+    默认使用 IN_PROCESS_TEAMMATE_ALLOWED_TOOLS 列表。
+    """
     if worker_tools is None:
         from mewcode.agents.tool_filter import IN_PROCESS_TEAMMATE_ALLOWED_TOOLS
         tools_str = ", ".join(sorted(IN_PROCESS_TEAMMATE_ALLOWED_TOOLS))

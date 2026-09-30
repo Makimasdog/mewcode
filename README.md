@@ -267,6 +267,10 @@ uv sync --extra server
 uv run mewcode-server --host 127.0.0.1 --port 8765
 ```
 
+启动后打开 <http://127.0.0.1:8765/> 可进入轻量 Web 控制台。控制台使用原生
+HTML/JavaScript，无需单独构建前端，支持提交任务、查看运行历史、查看任务详情、
+取消运行、重试失败任务，并通过 SSE 实时显示事件。
+
 主要接口：
 
 ```text
@@ -274,6 +278,8 @@ POST /v1/runs                 提交 Agent 任务
 GET  /v1/runs/{id}            查询任务状态
 POST /v1/runs/{id}/cancel     取消任务
 GET  /v1/runs/{id}/events     SSE 流式事件（支持 after 游标）
+GET  /v1/runs                 运行历史（支持 status、limit 参数）
+POST /v1/runs/{id}/retry      重试失败或取消的运行
 ```
 
 Runtime 事件保存在 `.mewcode/runs/<run_id>.events.jsonl`，状态快照保存在同目录的 `<run_id>.json`。服务层通过 `mewcode.runtime.bootstrap.build_runtime()` 使用和 CLI 相同的 provider、权限、Session 和工具配置。

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import sqlite3
 from pathlib import Path
 from typing import Any
 
 from mewcode.conversation import ConversationManager, Message
+from mewcode.memory.migration import import_legacy_memory
+from mewcode.memory.store import MemoryItem, MemoryStore
 
 USER_MEMORIES_RELPATH = ".mewcode/memories.md"
 PROJECT_MEMORIES_RELPATH = ".mewcode/memories.md"
@@ -41,10 +45,18 @@ _PROJECT_LEVEL_HEADERS = {"项目知识", "参考资料"}
 
 
 class MemoryManager:
-    def __init__(self, project_root: str) -> None:
+    def __init__(self, project_root: str, storage_mode: str | None = None) -> None:
         self._user_path = Path.home() / USER_MEMORIES_RELPATH
         self._project_path = Path(project_root) / PROJECT_MEMORIES_RELPATH
         self._last_extraction_msg_count = 0
+        # ``dual`` is the safe rollout mode: old Markdown remains readable and
+        # writable while structured records are built alongside it. Set
+        # MEWCODE_MEMORY_MODE=legacy to preserve the pre-upgrade behavior.
+        self.storage_mode = storage_mode or os.environ.get("MEWCODE_MEMORY_MODE", "dual")
+        if self.storage_mode not in {"legacy", "dual", "structured"}:
+            self.storage_mode = "dual"
+        self._user_store: MemoryStore | None = None
+        self._project_store: MemoryStore | None = None
 
 
     @property
@@ -76,6 +88,65 @@ class MemoryManager:
         """
         return self._project_path.parent / "memory"
 
+    @property
+    def user_db_path(self) -> Path:
+        return Path.home() / ".mewcode" / "memory.db"
+
+    @property
+    def project_db_path(self) -> Path:
+        return self._project_path.parent / "memory.db"
+
+    @property
+    def user_store(self) -> MemoryStore | None:
+        if self.storage_mode == "legacy":
+            return None
+        if self._user_store is None:
+            try:
+                self._user_store = MemoryStore(self.user_db_path)
+            except (OSError, ValueError, sqlite3.DatabaseError):
+                self._user_store = None
+        return self._user_store
+
+    @property
+    def project_store(self) -> MemoryStore | None:
+        if self.storage_mode == "legacy":
+            return None
+        if self._project_store is None:
+            try:
+                self._project_store = MemoryStore(self.project_db_path)
+            except (OSError, ValueError, sqlite3.DatabaseError):
+                self._project_store = None
+        return self._project_store
+
+    @staticmethod
+    def _render_structured(items: list[MemoryItem]) -> str:
+        headers = {
+            "user": {"user": "### 用户偏好", "feedback": "### 纠正反馈"},
+            "project": {"project": "### 项目知识", "reference": "### 参考资料"},
+        }
+        order = (("user", "user"), ("user", "feedback"), ("project", "project"), ("project", "reference"))
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for item in items:
+            if item.status != "active":
+                continue
+            grouped.setdefault((item.scope, item.type), []).append(item.content)
+        parts: list[str] = []
+        for key in order:
+            values = grouped.get(key, [])
+            if values:
+                parts.append(headers[key[0]][key[1]] + "\n" + "\n".join(f"- {v}" for v in values))
+        return "\n\n".join(parts)
+
+    def _structured_items(self) -> list[MemoryItem]:
+        result: list[MemoryItem] = []
+        for store in (self.user_store, self.project_store):
+            if store is not None:
+                try:
+                    result.extend(store.list(statuses=("active",)))
+                except (OSError, ValueError, sqlite3.DatabaseError):
+                    continue
+        return result
+
     def load(self) -> str:
         sections: list[str] = []
 
@@ -89,7 +160,25 @@ class MemoryManager:
             if content:
                 sections.append(content)
 
-        return "\n\n".join(sections)
+        legacy = "\n\n".join(sections)
+        if self.storage_mode == "legacy":
+            return legacy
+
+        # Structured records are rendered in the same four-heading format.
+        # Deduplication by content prevents dual-write records from appearing
+        # twice while retaining manually edited Markdown during migration.
+        structured = self._render_structured(self._structured_items())
+        if not structured:
+            return legacy
+        legacy_lower = legacy.casefold()
+        extra_lines = [
+            line for line in structured.splitlines()
+            if not (line.startswith("- ") and line[2:].strip().casefold() in legacy_lower)
+        ]
+        if not extra_lines:
+            return legacy
+        extras = "\n".join(extra_lines)
+        return "\n\n".join(part for part in (legacy, extras) if part)
 
     async def extract(
         self,
@@ -182,6 +271,30 @@ class MemoryManager:
                 "\n".join(project_sections).strip() + "\n", encoding="utf-8"
             )
 
+        if self.storage_mode != "legacy":
+            # Importing is idempotent and leaves the source Markdown intact.
+            # It also lets old extraction prompts feed the new structured store
+            # before JSON candidate extraction is enabled in a later phase.
+            try:
+                if self.user_store is not None:
+                    import_legacy_memory(
+                        self.user_store,
+                        user_flat=self._user_path,
+                        project_flat=Path("__nonexistent_project_memories__.md"),
+                        user_dir=self.user_mem_dir,
+                    )
+                if self.project_store is not None:
+                    import_legacy_memory(
+                        self.project_store,
+                        user_flat=Path("__nonexistent_user_memories__.md"),
+                        project_flat=self._project_path,
+                        project_dir=self.project_mem_dir,
+                    )
+            except (OSError, ValueError, sqlite3.DatabaseError):
+                # Markdown remains the authoritative fallback if SQLite cannot
+                # be opened or written.
+                pass
+
     @staticmethod
     def _is_placeholder(line: str) -> bool:
         stripped = line.strip().lstrip("- ").strip()
@@ -217,6 +330,73 @@ class MemoryManager:
             self._user_path.write_text("", encoding="utf-8")
         if self._project_path.exists():
             self._project_path.write_text("", encoding="utf-8")
+        if self.storage_mode != "legacy":
+            for store in (self.user_store, self.project_store):
+                if store is not None:
+                    try:
+                        store.clear()
+                    except (OSError, ValueError, sqlite3.DatabaseError):
+                        pass
+
+    def import_legacy(self) -> int:
+        """Import all supported Markdown memories without deleting them."""
+        if self.storage_mode == "legacy":
+            return 0
+        count = 0
+        if self.user_store is not None:
+            count += import_legacy_memory(
+                self.user_store,
+                user_flat=self._user_path,
+                project_flat=Path("__nonexistent_project_memories__.md"),
+                user_dir=self.user_mem_dir,
+            )
+        if self.project_store is not None:
+            count += import_legacy_memory(
+                self.project_store,
+                user_flat=Path("__nonexistent_user_memories__.md"),
+                project_flat=self._project_path,
+                project_dir=self.project_mem_dir,
+            )
+        return count
+
+    def search(self, query: str, limit: int = 20) -> list[MemoryItem]:
+        if self.storage_mode == "legacy":
+            return []
+        result: list[MemoryItem] = []
+        for store in (self.user_store, self.project_store):
+            if store is not None:
+                try:
+                    result.extend(store.search(query, limit=limit))
+                except (OSError, ValueError, sqlite3.DatabaseError):
+                    continue
+        result.sort(key=lambda item: item.updated_at, reverse=True)
+        return result[:limit]
+
+    def get(self, memory_id: str) -> MemoryItem | None:
+        if self.storage_mode == "legacy":
+            return None
+        for store in (self.user_store, self.project_store):
+            if store is not None:
+                item = store.get(memory_id)
+                if item is not None:
+                    return item
+        return None
+
+    def set_status(self, memory_id: str, status: str) -> bool:
+        if self.storage_mode == "legacy":
+            return False
+        for store in (self.user_store, self.project_store):
+            if store is not None and store.set_status(memory_id, status):
+                return True
+        return False
+
+    def delete(self, memory_id: str) -> bool:
+        if self.storage_mode == "legacy":
+            return False
+        for store in (self.user_store, self.project_store):
+            if store is not None and store.delete(memory_id):
+                return True
+        return False
 
     def get_display_text(self) -> str:
         parts: list[str] = []
@@ -230,6 +410,15 @@ class MemoryManager:
             content = self._project_path.read_text(encoding="utf-8").strip()
             if content:
                 parts.append(f"[项目级] {self._project_path}\n{content}")
+
+        if self.storage_mode != "legacy":
+            try:
+                self.import_legacy()
+            except (OSError, ValueError, sqlite3.DatabaseError):
+                pass
+            structured = self._render_structured(self._structured_items())
+            if structured and not parts:
+                parts.append(f"[结构化记忆] 用户数据库: {self.user_db_path}\n{structured}")
 
         if not parts:
             return "当前没有任何自动记忆。"

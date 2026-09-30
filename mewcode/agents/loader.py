@@ -159,15 +159,15 @@ class AgentLoader:
         获取指定类型的 Agent 定义。
         支持热重载：如果源文件已更新，自动重新解析。
         """
-        cached = self._agents.get(agent_type)
+        cached = self._agents.get(agent_type) #先查缓存，None 直接返回	不存在的 Agent 不做无用 IO
         if cached is None:
             return None
 
-        # 从文件热重载：检查文件是否已修改
+        # 从文件热重载：每次都无条件重新解析
         if cached.file_path is not None and cached.file_path.exists():
             try:
-                reloaded = parse_agent_file(cached.file_path)
-                reloaded.source = cached.source
+                reloaded = parse_agent_file(cached.file_path) #parse_agent_file() 重新读盘解析 核心动作：拿到文件当前内容
+                reloaded.source = cached.source     #修补信息丢失（见下）
                 self._agents[agent_type] = reloaded
                 return reloaded
             except AgentParseError as e:
