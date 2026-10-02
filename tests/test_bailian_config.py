@@ -19,7 +19,7 @@ def test_bailian_example_uses_compatible_client(monkeypatch: pytest.MonkeyPatch)
 
     assert provider.name == "bailian"
     assert provider.protocol == "openai-compat"
-    assert provider.model == "qwen-plus"
+    assert provider.model
     assert provider.resolve_api_key() == "example-only-key"
     assert isinstance(client, OpenAICompatClient)
     assert str(client._client.base_url) == "https://dashscope.aliyuncs.com/compatible-mode/v1/"

@@ -43,7 +43,7 @@ $env:MEWCODE_COORDINATOR_MODE = "1"
 uv run mewcode
 ```
 
-配置样例将百炼（`qwen-plus`）列在 Provider 列表首位，启动 TUI 时可选择百炼或 Anthropic；非交互模式使用列表首位。MewCode 当前不会自动读取 `.env` 文件；请在启动进程的环境变量中设置 `DASHSCOPE_API_KEY`，不要将真实 Key 写入仓库。
+配置样例将百炼列在 Provider 列表首位，启动 TUI 时可选择百炼或 Anthropic；非交互模式使用列表首位。MewCode 当前不会自动读取 `.env` 文件；请在启动进程的环境变量中设置 `DASHSCOPE_API_KEY`，不要将真实 Key 写入仓库。
 
 在 TUI 中输入例如“检索时间序列预测领域的代表论文，选一篇可复现的论文，实现核心方法并独立验证”。协调者会并行检索候选，定向精读公开材料，先将实验协议写入 `paper_repro/<slug>/protocol.md` 并记录 SHA-256，再派 PaperStudy 实现与全新 Verification Agent 复跑。结果以实际命令、原始输出和 `PASS/FAIL/PARTIAL` 判定汇报。任务结束后 `TeamDelete` 恢复普通工具集。
 
