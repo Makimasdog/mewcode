@@ -490,16 +490,30 @@ class TestHookEngine:
         await engine.run_hooks("post_tool_use", ctx)
 
     @pytest.mark.asyncio
-    async def test_async_hook_does_not_block(self):
+    async def test_async_hook_does_not_block(self, monkeypatch):
         h = self._make_hook(
             id="slow",
             event="post_tool_use",
-            action=Action(type="command", command="sleep 5"),
+            action=Action(type="command", command="echo slow"),
             async_exec=True,
         )
         engine = HookEngine([h])
         ctx = HookContext(event_name="post_tool_use")
-        await engine.run_hooks("post_tool_use", ctx)
+        started = asyncio.Event()
+        release = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def slow_action(_hook, _ctx):
+            started.set()
+            await release.wait()
+            finished.set()
+
+        monkeypatch.setattr(engine, "_run_single", slow_action)
+        await asyncio.wait_for(engine.run_hooks("post_tool_use", ctx), timeout=1)
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert not finished.is_set()
+        release.set()
+        await asyncio.wait_for(finished.wait(), timeout=1)
 
 # ---------------------------------------------------------------------------
 # Agent 循环集成
@@ -526,7 +540,7 @@ class TestAgentHookIntegration:
                     yield ToolCallComplete(
                         tool_id="t1",
                         tool_name="Bash",
-                        arguments={"command": "rm -rf /"},
+                        arguments={"command": "echo forbidden-test"},
                     )
                     yield StreamEnd(stop_reason="tool_use", input_tokens=10, output_tokens=5)
                 else:
@@ -534,12 +548,18 @@ class TestAgentHookIntegration:
                     yield StreamEnd(stop_reason="end_turn", input_tokens=10, output_tokens=5)
 
         hook = Hook(
-            id="block-rm",
+            id="block-forbidden-test",
             event="pre_tool_use",
-            action=Action(type="command", command="echo dangerous command blocked"),
-            condition=parse_condition('tool == "Bash" && args.command =~ /rm\\s+-rf/'),
+            action=Action(type="command", command="echo command blocked"),
+            condition=parse_condition('tool == "Bash" && args.command =~ /forbidden-test/'),
             reject=True,
         )
+        assert hook.condition is not None
+        assert hook.condition.evaluate(HookContext(
+            event_name="pre_tool_use",
+            tool_name="Bash",
+            tool_args={"command": "echo forbidden-test"},
+        ))
         engine = HookEngine([hook])
 
         client = MockClient()
