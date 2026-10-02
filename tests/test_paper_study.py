@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from mewcode.agent import Agent
 from mewcode.agents.loader import AgentLoader
 from mewcode.agents.tool_filter import resolve_agent_tools
 from mewcode.tools import create_default_registry
 from mewcode.tools.bash import Bash, Params as BashParams
+from mewcode.tools.agent_tool import AgentTool
 
 
 def test_paper_workers_can_run_their_stages(tmp_path: Path) -> None:
@@ -68,3 +71,28 @@ def test_concurrent_agents_bind_bash_to_their_own_work_dirs(tmp_path: Path) -> N
     left_output, right_output = asyncio.run(run())
     assert "STDOUT:\nleft" in left_output
     assert "STDOUT:\nright" in right_output
+
+
+def test_paper_stages_wait_for_successful_prerequisites() -> None:
+    parent = MagicMock(coordinator_mode=True)
+    manager = MagicMock()
+    tool = AgentTool(MagicMock(), manager, MagicMock(), parent)
+
+    assert tool._paper_stage_block("PaperSearch") is None
+    assert tool._paper_stage_block("Verification") is None
+    assert tool._paper_stage_block("PaperProtocol").is_error
+
+    tool._paper_stage_tasks["PaperSearch"] = ["search-1"]
+    manager.get.return_value = SimpleNamespace(status="running")
+    assert tool._paper_stage_block("PaperProtocol").is_error
+    manager.get.return_value = SimpleNamespace(status="failed")
+    assert tool._paper_stage_block("PaperProtocol").is_error
+    manager.get.return_value = SimpleNamespace(status="completed")
+    assert tool._paper_stage_block("PaperProtocol") is None
+
+    assert tool._paper_stage_block("PaperStudy").is_error
+    tool._paper_stage_tasks["PaperProtocol"] = ["protocol-1"]
+    assert tool._paper_stage_block("PaperStudy") is None
+    assert tool._paper_stage_block("Verification").is_error
+    tool._paper_stage_tasks["PaperStudy"] = ["study-1"]
+    assert tool._paper_stage_block("Verification") is None

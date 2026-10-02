@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 from mewcode.config import ConfigError, load_config
@@ -55,6 +56,12 @@ def main() -> None:
     hook_engine = HookEngine(hooks) if hooks else None
 
     if args.p is not None:
+        # Windows console encodings such as GBK cannot represent every model
+        # response character. Keep the noninteractive runner alive and escape
+        # only characters the active output stream cannot encode.
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(errors="backslashreplace")
         asyncio.run(_run_prompt(config, permission_mode, hook_engine, args.p))
         return
 
@@ -192,12 +199,18 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str) -> None
     if not team_manager._teams:
         return
 
-    import sys
-    for i in range(90):
-        await asyncio.sleep(2)
+    # Long background pipelines need more than the interactive default.
+    # A caller may extend the noninteractive wait without changing normal runs.
+    wait_seconds = float(os.environ.get("MEWCODE_PROMPT_WAIT_SECONDS", "180"))
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    i = 0
+    while time.monotonic() < deadline:
+        await asyncio.sleep(min(2.0, max(0.0, deadline - time.monotonic())))
         running = {k: not t.done() for k, t in task_manager._async_tasks.items()}
         completed_ids = [t.id for t in task_manager._tasks.values() if t.status != "running"]
-        print(f"[poll {i}] running={running} completed={completed_ids} teams={list(team_manager._teams.keys())} queue_size={task_manager._notify_queue.qsize()}", file=sys.stderr, flush=True)
+        if i % 15 == 0:
+            print(f"[poll {i}] running={running} completed={completed_ids} teams={list(team_manager._teams.keys())} queue_size={task_manager._notify_queue.qsize()}", file=sys.stderr, flush=True)
+        i += 1
         notes = drain_notifications()
         if not notes:
             has_running = any(v for v in running.values())
@@ -211,6 +224,11 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str) -> None
             "Teammate notifications received. Process them and continue.", conv
         )
         print(last_result, flush=True)
+    if task_manager._async_tasks:
+        raise TimeoutError(
+            f"Noninteractive run exceeded {wait_seconds:g}s with "
+            f"{len(task_manager._async_tasks)} background task(s) still running"
+        )
 
 
 if __name__ == "__main__":

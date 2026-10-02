@@ -103,6 +103,7 @@ class AgentTool(Tool):
     description = (
         "Launch a sub-agent to handle a task in an isolated context. "
         "Use subagent_type to select a predefined agent type (e.g. Explore, Plan, general-purpose), "
+        "for paper workflows use PaperSearch, PaperProtocol, PaperStudy, and Verification in that order; "
         "or leave it empty to fork the current conversation. "
         "Use team_name to spawn a teammate in an existing team."
     )
@@ -130,6 +131,34 @@ class AgentTool(Tool):
         self._provider_config = provider_config  # LLM 提供商配置
         self._worktree_manager = worktree_manager  # Worktree 管理器
         self._team_manager = team_manager        # 团队管理器
+        self._paper_stage_tasks: dict[str, list[str]] = {}
+
+    def _paper_stage_block(self, agent_type: str | None) -> ToolResult | None:
+        """Prevent a coordinator from launching dependent paper stages early."""
+        if not self._parent_agent.coordinator_mode:
+            return None
+        if agent_type == "Verification" and "PaperSearch" not in self._paper_stage_tasks:
+            return None  # Ordinary software verification has no paper stages.
+        prerequisite = {
+            "PaperProtocol": "PaperSearch",
+            "PaperStudy": "PaperProtocol",
+            "Verification": "PaperStudy",
+        }.get(agent_type)
+        if prerequisite is None:
+            return None
+        ids = self._paper_stage_tasks.get(prerequisite, [])
+        tasks = [self._task_manager.get(task_id) for task_id in ids]
+        if not tasks or any(task is None or task.status == "running" for task in tasks):
+            return ToolResult(
+                output=f"Wait for {prerequisite} completion notification before launching {agent_type}.",
+                is_error=True,
+            )
+        if not any(task.status == "completed" for task in tasks if task is not None):
+            return ToolResult(
+                output=f"No successful {prerequisite} worker has completed; cannot launch {agent_type}.",
+                is_error=True,
+            )
+        return None
 
     async def execute(self, params: BaseModel) -> ToolResult:
         """
@@ -141,6 +170,10 @@ class AgentTool(Tool):
         3. 其他 → 常规子 Agent 执行
         """
         p: AgentToolParams = params  # type: ignore[assignment]
+
+        block = self._paper_stage_block(p.subagent_type)
+        if block is not None:
+            return block
 
         # 路径 1：指定了团队 → 以团队成员身份启动
         if p.team_name:
@@ -289,6 +322,10 @@ class AgentTool(Tool):
                 name=agent_name,
                 fork_conversation=conversation if is_fork else None,
             )
+            if self._parent_agent.coordinator_mode and p.subagent_type in (
+                "PaperSearch", "PaperProtocol", "PaperStudy", "Verification"
+            ):
+                self._paper_stage_tasks.setdefault(p.subagent_type, []).append(task_id)
             # 后台启动后立即返回 Task ID，明确告知"不要睡/轮询"
             return ToolResult(
                 output=f"Sub-agent launched in background.\n"
@@ -710,6 +747,10 @@ class AgentTool(Tool):
             "sonnet": "claude-sonnet-4-6-20250514",
             "opus": "claude-opus-4-6-20250514",
         }
+        # Anthropic aliases are not valid model IDs on other providers.
+        # Let _select_llm fall back to the working parent model instead.
+        if model_alias in model_map and self._provider_config.protocol != "anthropic":
+            return None
         model_id = model_map.get(model_alias, model_alias)
 
         config = ProviderConfig(
