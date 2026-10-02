@@ -59,9 +59,10 @@ class AgentToolParams(BaseModel):
         description=(
             "REQUIRED when creating team members. Spawns the agent as a long-running "
             "teammate under this team (created via TeamCreate). Unlike regular sub-agents, "
-            "team members run in their own terminal, persist after the lead returns, and "
+            "team members run in their own worktree, persist after the lead returns, and "
             "communicate with each other via SendMessage. Without team_name the agent "
-            "runs as a one-shot sub-agent that blocks and returns inline."
+            "runs as a one-shot sub-agent: it returns inline unless run_in_background=true, "
+            "in which case it returns a task ID and later completion notification."
         ),
     )
 

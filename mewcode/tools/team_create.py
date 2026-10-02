@@ -53,6 +53,12 @@ class TeamCreateTool(Tool):
         "- The user mentions wanting agents to work together, coordinate, or collaborate\n"
         "- A task requires sequential or parallel collaboration between multiple agents\n\n"
         "When in doubt about whether a task warrants a team, prefer spawning a team.\n\n"
+        "When coordinator mode is enabled, TeamCreate also activates the coordinator. "
+        "A workflow using ordinary one-shot sub-agents can create the team without spawning teammates; "
+        "those sub-agents share the main work directory and do not receive team messages.\n\n"
+        "For a paper search and reproduction request, create a paper-study team to activate "
+        "the coordinator, then use the PaperSearch/PaperProtocol/PaperStudy/Verification "
+        "one-shot worker pipeline without team_name.\n\n"
         "## Team Workflow\n\n"
         "1. **Create a team** with TeamCreate\n"
         "2. **Spawn teammates** using the Agent tool with team_name and name parameters "
@@ -68,8 +74,8 @@ class TeamCreateTool(Tool):
         '  "prompt": "...",\n'
         '  "description": "..."\n'
         "})\n```\n"
-        "Without team_name, the agent runs as a one-shot sub-agent that blocks and returns inline "
-        "— it will NOT be a team member.\n\n"
+        "Without team_name, the agent runs as a one-shot sub-agent and will NOT be a team member. "
+        "With run_in_background=true it returns a task ID and later completion notification.\n\n"
         "## Teammate Idle State\n\n"
         "Teammates go idle after every turn — this is completely normal. "
         "Sending a message to an idle teammate wakes them up.\n\n"

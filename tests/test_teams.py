@@ -392,8 +392,8 @@ class TestToolFilter:
 
     def test_coordinator_mode_tools(self):
         assert "Agent" in COORDINATOR_MODE_ALLOWED_TOOLS
-        assert "SendMessage" in COORDINATOR_MODE_ALLOWED_TOOLS
-        assert "TaskStop" in COORDINATOR_MODE_ALLOWED_TOOLS
+        assert "SendMessage" not in COORDINATOR_MODE_ALLOWED_TOOLS
+        assert "TaskStop" not in COORDINATOR_MODE_ALLOWED_TOOLS
         assert "SyntheticOutput" in COORDINATOR_MODE_ALLOWED_TOOLS
         assert "ReadFile" not in COORDINATOR_MODE_ALLOWED_TOOLS
         assert "WriteFile" not in COORDINATOR_MODE_ALLOWED_TOOLS
@@ -407,7 +407,8 @@ class TestToolFilter:
         filtered = apply_coordinator_filter(reg)
         names = {t.name for t in filtered.list_tools()}
         assert "Agent" in names
-        assert "SendMessage" in names
+        assert "SendMessage" not in names
+        assert "TaskStop" not in names
         assert "SyntheticOutput" in names
         assert "ReadFile" not in names
         assert "Bash" not in names
@@ -453,7 +454,8 @@ class TestCoordinatorMode:
     def test_system_prompt_task_notification(self):
         prompt = get_coordinator_system_prompt()
         assert "<task-notification>" in prompt
-        assert "<task-id>" in prompt
+        assert "Task ID:" in prompt
+        assert "<task_id>" in prompt
 
     def test_match_session_mode_no_switch(self):
         with patch.dict(os.environ, {"MEWCODE_COORDINATOR_MODE": "1"}):

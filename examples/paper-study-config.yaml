@@ -1,0 +1,13 @@
+# Copy to .mewcode/config.yaml if this project has no local config yet.
+# If one already exists, merge the three feature flags below instead.
+providers:
+  - name: anthropic
+    protocol: anthropic
+    base_url: https://api.anthropic.com
+    model: claude-sonnet-4-6
+    api_key: ${ANTHROPIC_API_KEY}
+
+permission_mode: default
+enable_coordinator_mode: true
+enable_verification_agent: true
+teammate_mode: in-process

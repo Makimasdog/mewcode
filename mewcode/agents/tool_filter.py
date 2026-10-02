@@ -75,8 +75,7 @@ IN_PROCESS_TEAMMATE_ALLOWED_TOOLS: frozenset[str] = (
 
 # 协调者模式只能用这些工具（管理团队 + 派发任务）
 COORDINATOR_MODE_ALLOWED_TOOLS: frozenset[str] = frozenset({
-    "Agent", "TaskStop", "SendMessage", "SyntheticOutput",
-    "TeamCreate", "TeamDelete",
+    "Agent", "SyntheticOutput", "TeamCreate", "TeamDelete",
 })
 
 

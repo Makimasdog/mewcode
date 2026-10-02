@@ -453,6 +453,14 @@ class Agent:
         self.protocol = protocol
         self.work_dir = work_dir
         self.max_iterations = max_iterations
+
+        # Filtered sub-agent registries share tool objects with the parent.
+        # Give each Agent its own Bash instance so concurrent workers execute
+        # relative commands in their own work directory.
+        from mewcode.tools.bash import Bash
+        bash_tool = self.registry.get("Bash")
+        if type(bash_tool) is Bash:
+            self.registry.register(Bash(work_dir=work_dir))
         
         # --- 权限系统 ---
         self.permission_checker = permission_checker

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,8 @@ class Bash(Tool):
     params_model = Params
     category = "command"
 
+    def __init__(self, work_dir: str | None = None) -> None:
+        self.work_dir = str(Path(work_dir).resolve()) if work_dir is not None else None
 
     async def execute(self, params: Params) -> ToolResult:
         timeout = min(params.timeout, MAX_TIMEOUT)
@@ -27,6 +30,7 @@ class Bash(Tool):
         try:
             proc = await asyncio.create_subprocess_shell(
                 params.command,
+                cwd=self.work_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

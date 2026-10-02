@@ -12,7 +12,7 @@ MewCode 是一个运行在终端里的 AI 编程助手，支持多 LLM 提供商
 - **Slash 命令** — 内置 `/help`、`/compact`、`/clear`、`/plan`、`/session`、`/memory`、`/mcp`、`/status`、`/rewind`、`/permission`、`/tasks`、`/trace`、`/worktree`、`/skill`、`/review` 等命令
 - **MCP 协议** — 完整支持 Model Context Protocol，可接入外部工具服务器
 - **技能系统** — 内置 `commit`、`review`、`test`、`backend-interview` 等技能包，支持自定义扩展
-- **子 Agent** — 内置 Explore（代码探索）、Plan（架构设计）、General-purpose（通用任务）、Verification（代码审查）子 Agent
+- **子 Agent** — 内置 Explore、Plan、General-purpose、Verification，以及论文检索、协议落盘与复现专用的 PaperSearch、PaperProtocol、PaperStudy
 - **Agent 团队** — 支持 Coordinator 模式，Leader Agent 可创建多个 Teammate 并行协作
 - **Git Worktree** — 集成 Git Worktree 管理，子 Agent 可在隔离的 worktree 中工作
 - **会话管理** — 会话持久化、恢复、摘要生成、对话回退（Rewind）
@@ -32,6 +32,19 @@ MewCode 是一个运行在终端里的 AI 编程助手，支持多 LLM 提供商
 ```bash
 git clone <repo-url> mewcode && cd mewcode && uv sync && uv run mewcode
 ```
+
+### 论文检索与复现（协调者路线）
+
+`.mewcode/config.yaml` 是本地忽略文件。新环境可将 [配置样例](examples/paper-study-config.yaml) 复制为该文件；若已有配置，则合入 `enable_coordinator_mode: true`、`enable_verification_agent: true` 和 `teammate_mode: in-process`，保留原有提供商设置。启动前还需设置环境变量；协调者会在 `TeamCreate` 后生效：
+
+```powershell
+$env:MEWCODE_COORDINATOR_MODE = "1"
+uv run mewcode
+```
+
+在 TUI 中输入例如“检索时间序列预测领域的代表论文，选一篇可复现的论文，实现核心方法并独立验证”。协调者会并行检索候选，定向精读公开材料，先将实验协议写入 `paper_repro/<slug>/protocol.md` 并记录 SHA-256，再派 PaperStudy 实现与全新 Verification Agent 复跑。结果以实际命令、原始输出和 `PASS/FAIL/PARTIAL` 判定汇报。任务结束后 `TeamDelete` 恢复普通工具集。
+
+各后台 worker 使用 `dontAsk` 执行必要的写入与命令；`Bash` 的工作目录绑定到对应 Agent，但它不是强制只读沙箱。请在信任的环境中运行，优先选择公开全文、数据和代码齐全且资源需求可控的论文。检索默认使用 arXiv 与 OpenAlex；Semantic Scholar 公开 API 可能返回 429。全文或数据不可得时应报告限制，不应声称完整复现。具体阶段、验收和已知限制见 [协调者方案](PAPER_STUDY_COORDINATOR_DESIGN.md)。
 
 ## 安装
 
