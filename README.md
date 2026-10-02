@@ -38,9 +38,12 @@ git clone <repo-url> mewcode && cd mewcode && uv sync && uv run mewcode
 `.mewcode/config.yaml` 是本地忽略文件。新环境可将 [配置样例](examples/paper-study-config.yaml) 复制为该文件；若已有配置，则合入 `enable_coordinator_mode: true`、`enable_verification_agent: true` 和 `teammate_mode: in-process`，保留原有提供商设置。启动前还需设置环境变量；协调者会在 `TeamCreate` 后生效：
 
 ```powershell
+$env:DASHSCOPE_API_KEY = "你的百炼 API Key"
 $env:MEWCODE_COORDINATOR_MODE = "1"
 uv run mewcode
 ```
+
+配置样例将百炼（`qwen-plus`）列在 Provider 列表首位，启动 TUI 时可选择百炼或 Anthropic；非交互模式使用列表首位。MewCode 当前不会自动读取 `.env` 文件；请在启动进程的环境变量中设置 `DASHSCOPE_API_KEY`，不要将真实 Key 写入仓库。
 
 在 TUI 中输入例如“检索时间序列预测领域的代表论文，选一篇可复现的论文，实现核心方法并独立验证”。协调者会并行检索候选，定向精读公开材料，先将实验协议写入 `paper_repro/<slug>/protocol.md` 并记录 SHA-256，再派 PaperStudy 实现与全新 Verification Agent 复跑。结果以实际命令、原始输出和 `PASS/FAIL/PARTIAL` 判定汇报。任务结束后 `TeamDelete` 恢复普通工具集。
 
@@ -77,6 +80,21 @@ providers:
 
 permission_mode: default
 ```
+
+### 百炼（阿里云百炼）
+
+百炼使用 OpenAI 兼容的 Chat Completions 接口，因此要选 `openai-compat`，不能选使用 Responses API 的 `openai` 协议：
+
+```yaml
+providers:
+  - name: bailian
+    protocol: openai-compat
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: qwen-plus
+    api_key: ${DASHSCOPE_API_KEY}
+```
+
+上面是中国内地接入地址；其他地域可按百炼控制台提供的兼容接口地址替换 `base_url`。`model` 可换成账户已开通、支持工具调用的模型。完整的论文工作流配置见 [配置样例](examples/paper-study-config.yaml)。
 
 ### 完整配置示例
 
