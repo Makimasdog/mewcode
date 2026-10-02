@@ -1,0 +1,374 @@
+{
+  "paper": "MacQueen 1967, Some Methods for Classification and Analysis of Multivariate Observations",
+  "protocol_sha256": "ffcb257ec4538f85e471221b256825e193b2e43d0230d0a1486ff6a1c422288f",
+  "python_version": "3.12.4",
+  "algorithm_examples": {
+    "four_points": {
+      "centers": [
+        [
+          1.0
+        ],
+        [
+          9.0
+        ]
+      ],
+      "counts": [
+        2,
+        2
+      ]
+    },
+    "tie": {
+      "centers": [
+        [
+          0.5
+        ],
+        [
+          2.0
+        ]
+      ],
+      "counts": [
+        2,
+        1
+      ]
+    },
+    "accepted": true
+  },
+  "experiment_A": {
+    "seed": 1967,
+    "train_counts": {
+      "A": 129,
+      "B": 121
+    },
+    "test_counts": {
+      "A": 123,
+      "B": 127
+    },
+    "correct": 229,
+    "total": 250,
+    "accuracy": 0.916,
+    "majority_baseline": 0.508,
+    "improvement": 0.40800000000000003,
+    "centers_A": [
+      [
+        8.1,
+        7.6,
+        2.35,
+        3.5
+      ],
+      [
+        3.0,
+        2.75,
+        9.416666666666666,
+        5.083333333333333
+      ],
+      [
+        2.3529411764705883,
+        2.7058823529411766,
+        7.352941176470588,
+        2.411764705882353
+      ],
+      [
+        8.545454545454545,
+        7.863636363636363,
+        2.8636363636363638,
+        8.590909090909092
+      ],
+      [
+        7.583333333333333,
+        7.083333333333333,
+        8.916666666666666,
+        7.416666666666667
+      ],
+      [
+        7.8,
+        8.4,
+        7.1,
+        4.3
+      ],
+      [
+        4.375,
+        3.75,
+        8.875,
+        9.0
+      ],
+      [
+        3.2857142857142856,
+        2.9285714285714284,
+        3.107142857142857,
+        6.142857142857143
+      ]
+    ],
+    "centers_B": [
+      [
+        7.916666666666667,
+        2.5,
+        2.0,
+        6.5
+      ],
+      [
+        2.6,
+        8.6,
+        8.4,
+        2.3
+      ],
+      [
+        2.8076923076923075,
+        7.461538461538462,
+        7.115384615384615,
+        6.730769230769231
+      ],
+      [
+        7.466666666666667,
+        2.466666666666667,
+        6.4,
+        7.866666666666668
+      ],
+      [
+        2.6666666666666665,
+        8.055555555555555,
+        3.0555555555555554,
+        2.8333333333333335
+      ],
+      [
+        7.6,
+        4.2,
+        4.6,
+        9.2
+      ],
+      [
+        3.6666666666666665,
+        8.266666666666667,
+        3.066666666666667,
+        8.266666666666667
+      ],
+      [
+        7.9,
+        3.1,
+        4.55,
+        2.45
+      ]
+    ],
+    "accepted": true
+  },
+  "experiment_B": {
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019,
+      1020,
+      1021,
+      1022,
+      1023,
+      1024,
+      1025,
+      1026,
+      1027,
+      1028,
+      1029
+    ],
+    "trials": [
+      {
+        "seed": 1000,
+        "original_variance": 96.68049275630557,
+        "scrambled_variance": 140.7379247514312,
+        "ratio": 1.4557013595925448
+      },
+      {
+        "seed": 1001,
+        "original_variance": 88.47763536694472,
+        "scrambled_variance": 104.06464598396742,
+        "ratio": 1.1761689330007346
+      },
+      {
+        "seed": 1002,
+        "original_variance": 99.46851894308661,
+        "scrambled_variance": 118.73186449991123,
+        "ratio": 1.1936627363261196
+      },
+      {
+        "seed": 1003,
+        "original_variance": 102.45078143219393,
+        "scrambled_variance": 121.27440250247595,
+        "ratio": 1.183733308883937
+      },
+      {
+        "seed": 1004,
+        "original_variance": 98.77189473725069,
+        "scrambled_variance": 129.83769759836676,
+        "ratio": 1.3145206735555308
+      },
+      {
+        "seed": 1005,
+        "original_variance": 143.1107334102755,
+        "scrambled_variance": 126.97540937834711,
+        "ratio": 0.8872528730205652
+      },
+      {
+        "seed": 1006,
+        "original_variance": 102.23606277153891,
+        "scrambled_variance": 119.76473795927913,
+        "ratio": 1.1714529561541367
+      },
+      {
+        "seed": 1007,
+        "original_variance": 124.5261915341539,
+        "scrambled_variance": 112.07645120906541,
+        "ratio": 0.9000231182556171
+      },
+      {
+        "seed": 1008,
+        "original_variance": 89.34491376379384,
+        "scrambled_variance": 125.41456222824436,
+        "ratio": 1.4037123877002096
+      },
+      {
+        "seed": 1009,
+        "original_variance": 112.46669255157408,
+        "scrambled_variance": 127.85386429848438,
+        "ratio": 1.1368153663792875
+      },
+      {
+        "seed": 1010,
+        "original_variance": 109.85604479897752,
+        "scrambled_variance": 125.2400893822663,
+        "ratio": 1.1400382164808465
+      },
+      {
+        "seed": 1011,
+        "original_variance": 111.03969129320761,
+        "scrambled_variance": 146.71598361609074,
+        "ratio": 1.3212931511911135
+      },
+      {
+        "seed": 1012,
+        "original_variance": 117.50166662694564,
+        "scrambled_variance": 118.61081630761969,
+        "ratio": 1.0094394378608729
+      },
+      {
+        "seed": 1013,
+        "original_variance": 195.52017997829188,
+        "scrambled_variance": 215.32309360033534,
+        "ratio": 1.101283221119386
+      },
+      {
+        "seed": 1014,
+        "original_variance": 89.55180174056865,
+        "scrambled_variance": 148.160445909407,
+        "ratio": 1.6544663873835554
+      },
+      {
+        "seed": 1015,
+        "original_variance": 108.58799093852937,
+        "scrambled_variance": 135.34044619611953,
+        "ratio": 1.246366610399252
+      },
+      {
+        "seed": 1016,
+        "original_variance": 97.97904107508042,
+        "scrambled_variance": 147.03955452294272,
+        "ratio": 1.500724572414091
+      },
+      {
+        "seed": 1017,
+        "original_variance": 146.5707083532907,
+        "scrambled_variance": 184.13968393615212,
+        "ratio": 1.2563198063579388
+      },
+      {
+        "seed": 1018,
+        "original_variance": 132.1123703214211,
+        "scrambled_variance": 157.90047533545848,
+        "ratio": 1.1951982615352108
+      },
+      {
+        "seed": 1019,
+        "original_variance": 92.80239882946066,
+        "scrambled_variance": 103.22111648333971,
+        "ratio": 1.1122677623131825
+      },
+      {
+        "seed": 1020,
+        "original_variance": 103.02818140629127,
+        "scrambled_variance": 139.44814310499908,
+        "ratio": 1.353495142800646
+      },
+      {
+        "seed": 1021,
+        "original_variance": 104.72349863018476,
+        "scrambled_variance": 154.6552320543252,
+        "ratio": 1.4767958870479188
+      },
+      {
+        "seed": 1022,
+        "original_variance": 114.32004317214417,
+        "scrambled_variance": 142.71440651896748,
+        "ratio": 1.248376072637296
+      },
+      {
+        "seed": 1023,
+        "original_variance": 128.22780045454974,
+        "scrambled_variance": 142.20800583082183,
+        "ratio": 1.1090263213337062
+      },
+      {
+        "seed": 1024,
+        "original_variance": 120.64110638701521,
+        "scrambled_variance": 123.22739214883298,
+        "ratio": 1.021437848501828
+      },
+      {
+        "seed": 1025,
+        "original_variance": 122.14136321414625,
+        "scrambled_variance": 118.78163279441925,
+        "ratio": 0.9724930987233498
+      },
+      {
+        "seed": 1026,
+        "original_variance": 101.11324773119104,
+        "scrambled_variance": 120.52526322384269,
+        "ratio": 1.1919829095417682
+      },
+      {
+        "seed": 1027,
+        "original_variance": 104.65691472641683,
+        "scrambled_variance": 210.33008762696153,
+        "ratio": 2.009710377730745
+      },
+      {
+        "seed": 1028,
+        "original_variance": 105.99475057086084,
+        "scrambled_variance": 117.81985781034105,
+        "ratio": 1.1115631403988704
+      },
+      {
+        "seed": 1029,
+        "original_variance": 112.85128725747607,
+        "scrambled_variance": 130.99125320774496,
+        "ratio": 1.1607422156282685
+      }
+    ],
+    "median_ratio": 1.1878581092128526,
+    "ratios_above_one": 27,
+    "accepted": true
+  },
+  "verdict": "PARTIAL",
+  "limitation": "Original random samples and seed are unavailable; reported 87% and 1.6 cannot be checked exactly."
+}
