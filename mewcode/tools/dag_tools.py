@@ -107,6 +107,7 @@ class DAGCreateTool(Tool):
 
         # 2. 定义节点执行函数
         async def execute_node(node: DAGNode, dependency_outputs: dict[str, str]) -> str:
+            self._validate_dependency_evidence(node, dependency_outputs)
             # 将依赖的输出作为上下文注入
             context = ""
             if dependency_outputs:
@@ -124,10 +125,16 @@ class DAGCreateTool(Tool):
                     description=node.description or f"DAG node {node.id}",
                     subagent_type=node.agent_type,
                     run_in_background=False,
+                    force_foreground=True,
                 )
             )
             if result.is_error:
                 raise RuntimeError(result.output)
+            if result.output.lstrip().startswith("Sub-agent launched in background."):
+                raise RuntimeError(
+                    f"DAG node {node.id} returned a background task handle instead of its result"
+                )
+            self._validate_node_result(node, result.output)
             return result.output
 
         # 3. 执行 DAG
@@ -150,6 +157,68 @@ class DAGCreateTool(Tool):
             if node.error:
                 lines.append(f"error: {node.error}")
         return ToolResult(output="\n".join(lines), is_error=completed.status != NodeStatus.COMPLETED)
+
+    @staticmethod
+    def _validate_dependency_evidence(
+        node: DAGNode, dependency_outputs: dict[str, str]
+    ) -> None:
+        """Reject paper-DAG hand-offs that contain no auditable evidence.
+
+        A language model can produce a plausible implementation or PASS report
+        even when an upstream node only returned metadata.  These checks are
+        intentionally narrow and apply only to the built-in paper workflow;
+        ordinary DAGs keep their original free-form behavior.
+        """
+        combined = "\n".join(dependency_outputs.values())
+        lowered = combined.lower()
+
+        if node.agent_type == "PaperStudy" and dependency_outputs:
+            insufficient_markers = (
+                "no protocol",
+                "nothing to implement",
+                "no algorithmic content",
+                "does not contain the mathematical",
+                "cannot be extracted",
+                "no textual content",
+                "unable to retrieve verbatim",
+                "extraction failed",
+                "insufficient evidence",
+                "insufficient information",
+            )
+            if any(marker in lowered for marker in insufficient_markers):
+                raise RuntimeError(
+                    "upstream paper evidence is insufficient for reproduction; "
+                    "PaperStudy must not substitute a standard algorithm"
+                )
+
+    @staticmethod
+    def _validate_node_result(node: DAGNode, result: str) -> None:
+        """Validate evidence emitted by paper-workflow nodes themselves."""
+        lowered = result.lower()
+        if node.agent_type == "PaperSearch":
+            required = (
+                "http status:",
+                "pdf pages:",
+                "section 2.1 excerpt:",
+                "section 3.4 excerpt:",
+            )
+            if not all(token in lowered for token in required):
+                raise RuntimeError(
+                    "PaperSearch result lacks auditable source evidence "
+                    "(HTTP status, PDF pages, and section-specific excerpts are required)"
+                )
+
+        if node.agent_type == "Verification":
+            if "verdict:" not in lowered:
+                raise RuntimeError(
+                    "verification report is missing VERDICT; "
+                    "the node must classify the observed execution"
+                )
+            if "exit code:" not in lowered or "command:" not in lowered:
+                raise RuntimeError(
+                    "verification report lacks COMMAND/EXIT CODE evidence; "
+                    "a PASS verdict cannot be accepted"
+                )
 
 
 class DAGStatusTool(Tool):

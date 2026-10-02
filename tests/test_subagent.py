@@ -194,6 +194,13 @@ class TestAgentLoader:
         assert agents["Explore"].model == "haiku"
         assert agents["Explore"].max_turns == 30
 
+    def test_paper_search_is_available_and_read_only(self, tmp_path: Path):
+        loader = AgentLoader(str(tmp_path), enable_verification=True)
+        agents = loader.load_all()
+        assert agents["PaperSearch"].permission_mode == "dontAsk"
+        assert agents["PaperSearch"].background is False
+        assert set(agents["PaperSearch"].tools) == {"ReadFile", "Bash", "Glob", "Grep"}
+
     def test_verification_disabled_by_default(self, tmp_path: Path):
         loader = AgentLoader(str(tmp_path), enable_verification=False)
         agents = loader.load_all()

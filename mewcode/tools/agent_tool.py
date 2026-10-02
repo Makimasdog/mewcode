@@ -52,6 +52,7 @@ class AgentToolParams(BaseModel):
     subagent_type: str | None = None  # 预设 Agent 类型，省略则 fork 父对话
     model: str | None = None  # 覆盖模型（如 haiku/sonnet/opus），否则继承父 Agent
     run_in_background: bool = False  # 是否后台运行（不阻塞，返回 Task ID）
+    force_foreground: bool = False  # DAG 等调用方强制等待真实结果
     name: str | None = None  # 自定义子 Agent 名称
     isolation: str | None = None  # 隔离方式（如 "worktree"），来自 Agent 定义
     team_name: str | None = Field(
@@ -220,8 +221,11 @@ class AgentTool(Tool):
         client = self._select_llm(p, definition)
 
         # 判定是否后台运行：入参指定、定义要求、或处于 fork 模式
-        is_background = p.run_in_background or definition.background
-        if self._enable_fork:
+        is_background = not p.force_foreground and (p.run_in_background or definition.background)
+        # Fork mode normally runs asynchronously, but DAG nodes explicitly
+        # request a foreground result so that dependency scheduling cannot
+        # mistake a task handle for completed work.
+        if self._enable_fork and not p.force_foreground:
             is_background = True
 
         # 过滤工具：优先用完整注册表（coordinator 模式可能已缩减注册表）
@@ -237,6 +241,10 @@ class AgentTool(Tool):
             PERMISSION_MODE_MAP.get(pm_str, "DEFAULT"),
             PermissionMode.DEFAULT,
         )
+        # Non-interactive parent runs cannot answer permission prompts. Pass
+        # through explicit dontAsk mode to synchronous DAG children.
+        if self._parent_agent.permission_mode == PermissionMode.DONT_ASK:
+            pm_enum = PermissionMode.DONT_ASK
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
             sandbox=PathSandbox(self._parent_agent.work_dir),

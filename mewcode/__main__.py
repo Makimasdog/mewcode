@@ -115,6 +115,9 @@ def main() -> None:
 
     # ── 步骤 5: 根据模式启动 ────────────────────────────────────
     if args.p is not None:
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(errors="backslashreplace")
         # 非交互模式: 直接执行提示词并输出结果
         asyncio.run(_run_prompt(config, permission_mode, hook_engine, args.p))
         return
