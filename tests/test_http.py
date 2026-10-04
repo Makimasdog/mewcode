@@ -55,6 +55,8 @@ def test_console_is_served_and_contains_core_actions():
     assert "stat-total" in response.text
     assert "搜索任务或运行 ID" in response.text
     assert "focusComposer" in response.text
+    assert "与 LLM 对话" in response.text
+    assert "tool_result" in response.text
 
 
 def test_health_endpoint_returns_runtime_liveness():
@@ -82,3 +84,16 @@ def test_list_and_retry_endpoints():
     retried = response.json()
     assert retried["task"] == "retry me"
     assert retried["metadata"]["retry_of"] == "failed-1"
+
+
+def test_submit_accepts_session_for_follow_up_chat():
+    runtime = FakeRuntime()
+    client = TestClient(create_app(runtime))
+
+    response = client.post(
+        "/v1/runs",
+        json={"task": "继续刚才的分析", "session_id": "web-session-1"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["session_id"] == "web-session-1"
