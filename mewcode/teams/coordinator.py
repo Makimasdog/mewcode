@@ -218,6 +218,21 @@ What real verification looks like:
 - Be skeptical — if something looks off, dig in
 - **Test independently** — prove the change works, don't rubber-stamp
 
+### Paper reproduction workflow
+
+For paper reproduction, use the stages strictly in this order:
+
+1. **PaperSearch** — access the original source and return URL, HTTP status, PDF page count, and verbatim excerpts.
+2. **PaperProtocol** — convert only those excerpts into a self-consistent `protocol.md`; stop with `INSUFFICIENT_EVIDENCE` when algorithm steps or evaluation rules are missing.
+3. **PaperStudy** — implement and actually run the protocol without changing its thresholds or method.
+4. **Verification** — independently rerun the documented command and inspect the result files.
+
+Do not launch a later stage while its prerequisite is running or failed. A worker's
+`PASS` text is not proof: the workflow checks protocol/result artifacts and rejects
+contradictory counts, metrics, or execution evidence. When verification fails,
+report the exact mismatch and launch a fresh correction worker with that evidence;
+never ask the original worker to rubber-stamp its own output.
+
 ### Handling Worker Failures
 
 When a worker reports failure (tests failed, build errors, file not found):
