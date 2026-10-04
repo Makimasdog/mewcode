@@ -103,6 +103,7 @@ class AgentTool(Tool):
     description = (
         "Launch a sub-agent to handle a task in an isolated context. "
         "Use subagent_type to select a predefined agent type (e.g. Explore, Plan, general-purpose), "
+        "for paper workflows use PaperSearch, PaperProtocol, PaperStudy, and Verification in that order, "
         "or leave it empty to fork the current conversation. "
         "Use team_name to spawn a teammate in an existing team."
     )
@@ -121,6 +122,7 @@ class AgentTool(Tool):
         provider_config: Any = None,
         worktree_manager: Any = None,
         team_manager: Any = None,
+        event_callback: Any = None,
     ) -> None:
         self._agent_loader = agent_loader      # Agent 定义加载器
         self._task_manager = task_manager        # 任务管理器（后台任务）
@@ -129,7 +131,36 @@ class AgentTool(Tool):
         self._enable_fork = enable_fork          # 是否允许 Fork 模式
         self._provider_config = provider_config  # LLM 提供商配置
         self._worktree_manager = worktree_manager  # Worktree 管理器
-        self._team_manager = team_manager        # 团队管理器
+        self._team_manager = team_manager
+        self._paper_stage_tasks: dict[str, list[str]] = {}
+        self._event_callback = event_callback
+
+    def _paper_stage_block(self, agent_type: str | None) -> ToolResult | None:
+        """Keep coordinator paper stages ordered and require successful prerequisites."""
+        if not getattr(self._parent_agent, "coordinator_mode", False):
+            return None
+        if agent_type == "Verification" and "PaperSearch" not in self._paper_stage_tasks:
+            return None
+        prerequisite = {
+            "PaperProtocol": "PaperSearch",
+            "PaperStudy": "PaperProtocol",
+            "Verification": "PaperStudy",
+        }.get(agent_type)
+        if prerequisite is None:
+            return None
+        task_ids = self._paper_stage_tasks.get(prerequisite, [])
+        tasks = [self._task_manager.get(task_id) for task_id in task_ids]
+        if not tasks or any(task is None or task.status == "running" for task in tasks):
+            return ToolResult(
+                output=f"Wait for {prerequisite} completion notification before launching {agent_type}.",
+                is_error=True,
+            )
+        if not any(task.status == "completed" for task in tasks if task is not None):
+            return ToolResult(
+                output=f"No successful {prerequisite} worker has completed; cannot launch {agent_type}.",
+                is_error=True,
+            )
+        return None
 
     async def execute(self, params: BaseModel) -> ToolResult:
         """
@@ -141,6 +172,9 @@ class AgentTool(Tool):
         3. 其他 → 常规子 Agent 执行
         """
         p: AgentToolParams = params  # type: ignore[assignment]
+        block = None if p.force_foreground else self._paper_stage_block(p.subagent_type)
+        if block is not None:
+            return block
 
         # 路径 1：指定了团队 → 以团队成员身份启动
         if p.team_name:
@@ -222,6 +256,15 @@ class AgentTool(Tool):
 
         # 判定是否后台运行：入参指定、定义要求、或处于 fork 模式
         is_background = not p.force_foreground and (p.run_in_background or definition.background)
+        if (
+            not p.force_foreground
+            and getattr(self._parent_agent, "coordinator_mode", False)
+            and p.subagent_type in {"PaperSearch", "PaperProtocol", "PaperStudy", "Verification"}
+        ):
+            # Keep the built-in definitions usable in ordinary foreground
+            # tests, while a coordinator still receives asynchronous stage
+            # notifications needed by the dependency guard.
+            is_background = True
         # Fork mode normally runs asynchronously, but DAG nodes explicitly
         # request a foreground result so that dependency scheduling cannot
         # mistake a task handle for completed work.
@@ -296,6 +339,10 @@ class AgentTool(Tool):
                 name=agent_name,
                 fork_conversation=conversation if is_fork else None,
             )
+            if getattr(self._parent_agent, "coordinator_mode", False) and p.subagent_type in {
+                "PaperSearch", "PaperProtocol", "PaperStudy", "Verification"
+            }:
+                self._paper_stage_tasks.setdefault(p.subagent_type, []).append(task_id)
             # 后台启动后立即返回 Task ID，明确告知"不要睡/轮询"
             return ToolResult(
                 output=f"Sub-agent launched in background.\n"
@@ -311,7 +358,9 @@ class AgentTool(Tool):
             if is_fork:
                 result_text = await sub_agent.run_to_completion("", conversation)
             else:
-                result_text = await sub_agent.run_to_completion(p.prompt)
+                result_text = await sub_agent.run_to_completion(
+                    p.prompt, event_callback=self._event_callback
+                )
         except Exception as e:
             self._trace_manager.complete(trace_node.agent_id, "failed")
             return ToolResult(

@@ -18,6 +18,7 @@ mewcode = "mewcode.__main__:main"
 mewcode-server = "mewcode.runtime.server:main"
 
 [project.optional-dependencies]
+paper = ["pypdf>=6.0", "python-dotenv>=1.0"]
 server = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
@@ -25,6 +26,9 @@ server = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["mewcode"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["hatchling"]

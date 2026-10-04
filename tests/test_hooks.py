@@ -249,7 +249,8 @@ class TestCommandExecutor:
     async def test_timeout(self):
         from mewcode.hooks.executors import execute_command
 
-        action = Action(type="command", command="sleep 10", timeout=1)
+        import sys
+        action = Action(type="command", command=f'"{sys.executable}" -c "import time; time.sleep(2)"', timeout=1)
         ctx = HookContext()
         result = await execute_command(action, ctx)
         assert result.success is False
@@ -486,6 +487,15 @@ class TestHookEngine:
 
     @pytest.mark.asyncio
     async def test_async_hook_does_not_block(self):
+        import asyncio
+        started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def slow_action(action, ctx):
+            started.set()
+            await release.wait()
+            finished.set()
+            return ActionResult(output="done", success=True)
+
         h = self._make_hook(
             id="slow",
             event="post_tool_use",
@@ -494,7 +504,12 @@ class TestHookEngine:
         )
         engine = HookEngine([h])
         ctx = HookContext(event_name="post_tool_use")
-        await engine.run_hooks("post_tool_use", ctx)
+        with patch("mewcode.hooks.engine.execute_action", side_effect=slow_action):
+            await asyncio.wait_for(engine.run_hooks("post_tool_use", ctx), timeout=1)
+            await asyncio.wait_for(started.wait(), timeout=1)
+            assert not finished.is_set()
+            release.set()
+            await asyncio.wait_for(finished.wait(), timeout=1)
 
 # ---------------------------------------------------------------------------
 # Agent 循环集成

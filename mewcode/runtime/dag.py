@@ -247,6 +247,10 @@ class DAGScheduler:
                 break
 
             # 并行执行就绪节点
+            for node in ready:
+                node.status = NodeStatus.RUNNING
+                node.started_at = time.time()
+            self._save(run)
             tasks = [asyncio.create_task(self._run_node(node, outputs, executor)) for node in ready]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for node, result in zip(ready, results):
@@ -261,6 +265,7 @@ class DAGScheduler:
                                 other.error = f"blocked by failed node {node.id}"
                         run.status = NodeStatus.FAILED
                         run.error = f"node {node.id} failed: {node.error}"
+                        run.ended_at = time.time()
                         self._save(run)
                         return run
                 else:

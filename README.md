@@ -286,6 +286,73 @@ Runtime 事件保存在 `.mewcode/runs/<run_id>.events.jsonl`，状态快照保�
 
 Agent 团队还提供 `DAGCreate` 和 `DAGStatus` 工具。DAG 节点可以声明 `depends_on`，就绪节点并行执行，依赖节点的输出自动注入下游 Prompt；运行快照保存在 `.mewcode/dag-runs/`。适合构建“探索 → 实现 → 测试 → 审查”的多 Agent 工作流。
 
+论文复现 DAG 还提供确定性证据门：验证 Agent 的 `VERDICT: PASS` 只是必要条件，
+系统会重新读取 `paper_repro/<slug>/protocol.md` 和结果 JSON，核对协议要求的距离
+计算次数、数据行数与簇计数之和、以及 `algorithm_compliance` 是否与实际观测一致。
+出现矛盾时 DAG 会失败并列出 `DISTANCE_MISMATCH`、`COUNT_MISMATCH` 或
+`COMPLIANCE_MISMATCH`，避免模型仅凭文字报告误报成功。普通 DAG 没有协议文件时
+不启用这层审计。
+
+## KMeans 论文复现：一条命令完成四阶段
+
+`paper_study_DAG` 分支新增固定流程入口：下载原文 → PaperSearch → PaperProtocol →
+PaperStudy → Verification。程序固定依赖关系，模型负责前三阶段，最后由独立校验器
+直接执行代码和数值验收，无需额外模型调用。
+
+Windows / PowerShell（无需先安装 uv）：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[paper]"
+.\.venv\Scripts\python.exe -m mewcode.paper_workflow --paper kmeans
+```
+
+如果已有通过 uv 创建的 `.venv`，可以使用：
+
+```powershell
+uv sync --extra paper
+uv run --extra paper python -m mewcode.paper_workflow --paper kmeans
+```
+
+项目根目录 `.env` 中设置 `DASHSCOPE_API_KEY=你的百炼密钥`。入口自动加载 `.env`，
+环境变量优先，默认使用百炼兼容接口和模型 `qwen3.7-flash-2026-07-15`。
+可通过 `--model`、`--base-url` 覆盖模型及区域端点；这些参数仅作用于论文入口。
+流程会执行模型生成的 Python 代码，请在用于论文实验的项目目录中运行。
+
+每次默认创建新的 `paper_repro/kmeans_时间戳/`，也可用 `--output paper_repro/新目录`
+指定目录。已有目录会被拒绝覆盖。失败返回非零退出码，详细过程在 `events.jsonl`
+和 `.mewcode/dag-runs/<run_id>.json`，模型达到轮数上限会明确失败。
+中途断网或额度不足时，可使用 `--output 原目录 --resume` 从检查点续跑：
+
+```powershell
+.\.venv\Scripts\python.exe -m mewcode.paper_workflow --output paper_repro/你的实验目录 --resume
+```
+
+续跑先检查源文件、数据和已完成协议的哈希；检索/协议/实现完成后，单独续跑验证
+不需要模型 API。要重新生成实现，请开始新的实验目录。百炼返回
+`AllocationQuota.FreeTierOnly` 表示免费额度耗尽，需要在百炼控制台调整额度设置后
+才能启动新的模型阶段。
+
+复现对象是 MacQueen (1967) 第 2.1 节在线 KMeans，以及第 3.4 节方环数据打乱实验：
+150 个二维样本、12 个簇、1 组原始数据和 19 组维度打乱数据。随机种子 42 是本次
+复现选择。原论文未公开样本/种子，因此复现方法与实验设计，并如实比较比值；
+不宣称精确重现论文的 1.6 倍结果或完成论文中所有应用实验。
+
+通过条件包含真实命令退出码、协议 SHA-256 保持一致、输入数据不变、20 组结果
+与独立实现吻合，以及 7 个边界测试（并列距离、重复种子、k=1、n=k 和随机数据）。
+`verification.json` 是最终验证记录，`execution.json` 保存程序再次执行的命令和输出，
+`report.md` 是实验报告。下载的 PDF、抽取文本、协议、数据与生成代码均保留。
+
+已有产物可离线重跑，不再调用 API（替换下面目录名）：
+
+```powershell
+.\.venv\Scripts\python.exe paper_repro/你的实验目录/run.py
+.\.venv\Scripts\python.exe -m mewcode.kmeans_check paper_repro/你的实验目录
+```
+
+开发测试使用 `uv run pytest` 或项目虚拟环境中的 `python -m pytest`。
+测试仅收集 `tests/`，避免历史实验的临时测试文件影响项目回归。
+
 ## License
 
 MIT

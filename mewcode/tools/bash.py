@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +17,11 @@ class Params(BaseModel):
 
 class Bash(Tool):
     name = "Bash"
-    description = "Execute a shell command and return stdout and stderr."
+    description = (
+        "Execute a shell command and return stdout, stderr and EXIT CODE. "
+        + ("On Windows this runs cmd.exe: use double quotes, no PowerShell syntax or heredocs."
+           if os.name == "nt" else "Commands run in /bin/sh.")
+    )
     params_model = Params
     category = "command"
 
@@ -29,6 +34,7 @@ class Bash(Tool):
                 params.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -46,6 +52,6 @@ class Bash(Tool):
         if not parts:
             parts.append("(no output)")
 
-        output = "\n".join(parts)
+        output = f"EXIT CODE: {proc.returncode}\n" + "\n".join(parts)
         return ToolResult(output=output, is_error=proc.returncode != 0)
 

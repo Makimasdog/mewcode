@@ -1447,6 +1447,11 @@ class Agent:
                         "args": tc.arguments,
                     })
                 result = await self._execute_tool_noninteractive(tc)
+                if event_callback:
+                    event_callback({
+                        "type": "tool_result", "toolName": tc.tool_name,
+                        "output": result.output, "is_error": result.is_error,
+                    })
                 content = self._maybe_persist_or_truncate(tc.tool_id, result.output)
                 tool_results.append(
                     ToolResultBlock(
@@ -1462,6 +1467,10 @@ class Agent:
                 ctx = self._build_hook_context("turn_end")
                 await self.hook_engine.run_hooks("turn_end", ctx)
 
+        else:
+            raise RuntimeError(
+                f"Agent exceeded {self.max_iterations} iterations without a final answer"
+            )
         return last_text
 
     async def _execute_tool_noninteractive(
