@@ -413,7 +413,8 @@ class OpenAICompatClient(LLMClient):
         if not api_key:
             raise AuthenticationError(
                 "OpenAI-compatible API key not found. "
-                "Set it in .mewcode/config.yaml or via OPENAI_API_KEY env var."
+                "Set it in .mewcode/config.yaml or via OPENAI_API_KEY/"
+                "DASHSCOPE_API_KEY env var."
             )
         self._client = AsyncOpenAI(api_key=api_key, base_url=config.base_url)
 

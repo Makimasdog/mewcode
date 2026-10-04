@@ -76,6 +76,19 @@ class TestProviderApiKey:
         )
         assert provider.resolve_api_key() == ""
 
+    def test_bailian_provider_uses_dashscope_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-secret")
+        provider = ProviderConfig(
+            name="bailian",
+            protocol="openai-compat",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model="qwen3.7-flash-2026-07-15",
+        )
+        assert provider.resolve_api_key() == "dashscope-secret"
+
 # ===========================================================================
 # build_child_env
 # ===========================================================================
@@ -122,6 +135,26 @@ class TestLoadConfigMCP:
         """)
         config = load_config(path)
         assert config.mcp_servers == []
+
+    def test_loads_project_dotenv_for_provider_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MEWCODE_TEST_API_KEY", raising=False)
+        (tmp_path / ".env").write_text(
+            "MEWCODE_TEST_API_KEY=from-dotenv\n", encoding="utf-8"
+        )
+        path = self._write_config(tmp_path, """
+            providers:
+              - name: test
+                protocol: openai-compat
+                base_url: http://localhost/v1
+                model: test-model
+                api_key: ${MEWCODE_TEST_API_KEY}
+        """)
+
+        config = load_config(path)
+
+        assert config.providers[0].resolve_api_key() == "from-dotenv"
 
     def test_stdio_server(self, tmp_path: Path) -> None:
         path = self._write_config(tmp_path, """\

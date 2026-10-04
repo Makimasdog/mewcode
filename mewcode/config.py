@@ -50,6 +50,13 @@ class ProviderConfig:
             # A missing environment variable must not be sent as a literal API key.
             return "" if _ENV_VAR_RE.search(resolved) else resolved
         env_var = _ENV_KEY_MAP.get(self.protocol, "")
+        if self.protocol == "openai-compat" and self.name.lower() in {
+            "bailian",
+            "dashscope",
+        }:
+            return os.environ.get("DASHSCOPE_API_KEY", "") or os.environ.get(
+                env_var, ""
+            )
         return os.environ.get(env_var, "")
 
     def set_fetched_context_window(self, window: int) -> None:
@@ -102,6 +109,47 @@ def build_child_env(declared_env: dict[str, str] | None) -> dict[str, str]:
     for key, value in (declared_env or {}).items():
         env[key] = resolve_env_vars(value)
     return env
+
+
+def _load_project_dotenv(root: Path) -> None:
+    """Load a project ``.env`` without overwriting the shell environment.
+
+    ``python-dotenv`` is optional in this project, so configuration loading
+    uses it when available and falls back to a deliberately small parser for
+    the common ``KEY=value``/``export KEY=value`` form.  Secrets are never
+    logged or copied into the config file; only the process environment is
+    populated for ``${ENV_VAR}`` expansion.
+    """
+    path = root / ".env"
+    if not path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        load_dotenv = None
+    if load_dotenv is not None:
+        load_dotenv(path, override=False)
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        if entry.startswith("export "):
+            entry = entry[7:].lstrip()
+        if "=" not in entry:
+            continue
+        key, value = entry.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ[key] = value
 
 
 @dataclass
@@ -221,6 +269,7 @@ def _merge_config(base: AppConfig, override: AppConfig) -> AppConfig:
 
 
 def load_config(path: Path | None = None) -> AppConfig:
+    _load_project_dotenv(path.parent if path is not None else Path.cwd())
     if path is not None:
         if not path.exists():
             raise ConfigError(f"Config file not found: {path}")
