@@ -51,6 +51,22 @@ def test_console_is_served_and_contains_core_actions():
     assert "MewCode 控制台" in response.text
     assert "/v1/runs" in response.text
     assert "EventSource" in response.text
+    assert "运行概览" in response.text
+    assert "stat-total" in response.text
+    assert "搜索任务或运行 ID" in response.text
+    assert "focusComposer" in response.text
+
+
+def test_health_endpoint_returns_runtime_liveness():
+    client = TestClient(create_app(FakeRuntime()))
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "service": "mewcode-runtime",
+        "runs": 1,
+    }
 
 
 def test_list_and_retry_endpoints():
