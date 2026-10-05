@@ -20,11 +20,145 @@ http.py — FastAPI HTTP 适配器
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from mewcode.config import ProviderConfig
 from mewcode.runtime.service import AgentRuntime
+
+
+PROVIDER_CATALOG = [
+    {
+        "id": "openai",
+        "label": "OpenAI",
+        "protocol": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4.1-mini",
+        "env_var": "OPENAI_API_KEY",
+        "kind": "官方",
+    },
+    {
+        "id": "anthropic",
+        "label": "Anthropic",
+        "protocol": "anthropic",
+        "base_url": "https://api.anthropic.com",
+        "model": "claude-sonnet-4-6",
+        "env_var": "ANTHROPIC_API_KEY",
+        "kind": "官方",
+    },
+    {
+        "id": "bailian",
+        "label": "阿里云百炼",
+        "protocol": "openai-compat",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen3.7-flash-2026-07-15",
+        "env_var": "DASHSCOPE_API_KEY",
+        "kind": "官方兼容",
+    },
+    {
+        "id": "deepseek",
+        "label": "DeepSeek",
+        "protocol": "openai-compat",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "env_var": "DEEPSEEK_API_KEY",
+        "kind": "官方兼容",
+    },
+    {
+        "id": "moonshot",
+        "label": "Moonshot / Kimi",
+        "protocol": "openai-compat",
+        "base_url": "https://api.moonshot.cn/v1",
+        "model": "kimi-k2.5",
+        "env_var": "MOONSHOT_API_KEY",
+        "kind": "官方兼容",
+    },
+    {
+        "id": "zhipu",
+        "label": "智谱 GLM",
+        "protocol": "openai-compat",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4.5-flash",
+        "env_var": "ZHIPUAI_API_KEY",
+        "kind": "官方兼容",
+    },
+    {
+        "id": "siliconflow",
+        "label": "SiliconFlow",
+        "protocol": "openai-compat",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "model": "deepseek-ai/DeepSeek-V3",
+        "env_var": "SILICONFLOW_API_KEY",
+        "kind": "第三方聚合",
+    },
+    {
+        "id": "openrouter",
+        "label": "OpenRouter",
+        "protocol": "openai-compat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "openai/gpt-4.1-mini",
+        "env_var": "OPENROUTER_API_KEY",
+        "kind": "第三方聚合",
+    },
+    {
+        "id": "custom",
+        "label": "自定义中转站",
+        "protocol": "openai-compat",
+        "base_url": "http://localhost:3000/v1",
+        "model": "your-model",
+        "env_var": "OPENAI_API_KEY",
+        "kind": "OneAPI / New API / 其他兼容站",
+    },
+]
+
+
+def _provider_public(provider: ProviderConfig, active: bool = False) -> dict[str, Any]:
+    """Return provider metadata without ever exposing an API key."""
+    return {
+        "name": provider.name,
+        "protocol": provider.protocol,
+        "base_url": provider.base_url,
+        "model": provider.model,
+        "thinking": provider.thinking,
+        "max_output_tokens": provider.max_output_tokens,
+        "api_key_configured": bool(provider.resolve_api_key()),
+        "active": active,
+    }
+
+
+def _persist_provider_profiles(runtime: AgentRuntime) -> None:
+    """Persist profiles to ignored project-local config without other settings."""
+    root = Path(getattr(runtime, "config_root", Path.cwd()))
+    config_dir = root / ".mewcode"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    path = config_dir / "config.local.yaml"
+    try:
+        import yaml
+
+        existing = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(existing, dict):
+            existing = {}
+        existing["providers"] = [
+            {
+                "name": provider.name,
+                "protocol": provider.protocol,
+                "base_url": provider.base_url,
+                "model": provider.model,
+                "api_key": provider.api_key,
+                "thinking": provider.thinking,
+                "max_output_tokens": provider.max_output_tokens,
+            }
+            for provider in getattr(runtime, "provider_configs", {}).values()
+        ]
+        path.write_text(
+            yaml.safe_dump(existing, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+    except (OSError, ValueError, TypeError):
+        # The in-memory profile remains usable when local persistence fails.
+        return
 
 
 class RunRequest(BaseModel):
@@ -34,6 +168,20 @@ class RunRequest(BaseModel):
     max_attempts: int = Field(default=1, ge=1, le=5)  # 最大重试次数 (1-5)
     timeout_seconds: float | None = Field(default=None, gt=0)  # 超时时间
     metadata: dict[str, Any] = Field(default_factory=dict)  # 扩展元数据
+
+
+class ProviderRequest(BaseModel):
+    """Provider profile submitted by the local settings panel."""
+
+    name: str = Field(min_length=1, max_length=64)
+    protocol: str = Field(default="openai-compat", min_length=3, max_length=32)
+    base_url: str = Field(min_length=8, max_length=512)
+    model: str = Field(min_length=1, max_length=160)
+    api_key: str = Field(default="", max_length=512)
+    thinking: bool = False
+    max_output_tokens: int = Field(default=0, ge=0, le=200000)
+    make_active: bool = False
+    persist: bool = True
 
 
 def create_app(runtime: AgentRuntime):
@@ -62,6 +210,58 @@ def create_app(runtime: AgentRuntime):
             "service": "mewcode-runtime",
             "runs": len(runs),
         }
+
+    @app.get("/v1/providers")
+    async def list_providers():
+        """List configured model profiles and safe preset metadata."""
+        profiles = getattr(runtime, "provider_configs", {})
+        active = getattr(runtime, "provider_state", {}).get("active", "")
+        return {
+            "providers": [
+                _provider_public(provider, provider.name == active)
+                for provider in profiles.values()
+            ],
+            "catalog": PROVIDER_CATALOG,
+            "active": active,
+        }
+
+    @app.post("/v1/providers")
+    async def configure_provider(request: ProviderRequest):
+        """Add or replace a local provider profile for future runs."""
+        if request.protocol not in {"anthropic", "openai", "openai-compat"}:
+            raise HTTPException(
+                status_code=422,
+                detail="protocol must be anthropic, openai, or openai-compat",
+            )
+        profiles = getattr(runtime, "provider_configs", None)
+        state = getattr(runtime, "provider_state", None)
+        if profiles is None or state is None:
+            raise HTTPException(status_code=503, detail="provider management unavailable")
+        previous = profiles.get(request.name)
+        api_key = request.api_key or (previous.api_key if previous else "")
+        profiles[request.name] = ProviderConfig(
+            name=request.name,
+            protocol=request.protocol,
+            base_url=request.base_url.rstrip("/"),
+            model=request.model,
+            api_key=api_key,
+            thinking=request.thinking,
+            max_output_tokens=request.max_output_tokens,
+        )
+        if request.make_active or not state.get("active"):
+            state["active"] = request.name
+        if request.persist:
+            _persist_provider_profiles(runtime)
+        return _provider_public(profiles[request.name], profiles[request.name].name == state["active"])
+
+    @app.post("/v1/providers/{provider_name}/activate")
+    async def activate_provider(provider_name: str):
+        profiles = getattr(runtime, "provider_configs", {})
+        state = getattr(runtime, "provider_state", None)
+        if state is None or provider_name not in profiles:
+            raise HTTPException(status_code=404, detail="provider not found")
+        state["active"] = provider_name
+        return _provider_public(profiles[provider_name], True)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def console():
@@ -167,164 +367,18 @@ def create_app(runtime: AgentRuntime):
 CONSOLE_HTML = r"""<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0b1020">
-  <title>MewCode 控制台 · Runtime Console</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #080b14;
-      --surface: #111827;
-      --surface-2: #172033;
-      --surface-3: #1d2940;
-      --line: #26344d;
-      --line-soft: rgba(148,163,184,.16);
-      --text: #edf3ff;
-      --muted: #8d9ab1;
-      --accent: #7c8cff;
-      --accent-2: #a78bfa;
-      --success: #4ade9a;
-      --warning: #f6c768;
-      --danger: #ff7188;
-      --shadow: 0 18px 50px rgba(0,0,0,.24);
-    }
-    * { box-sizing: border-box; }
-    body { margin:0; min-width:320px; background:radial-gradient(circle at 10% -10%,#1e2a55 0,transparent 34%),var(--bg); color:var(--text); font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    button,input,textarea,select { font:inherit; }
-    button { cursor:pointer; }
-    .shell { display:grid; grid-template-columns:250px minmax(0,1fr); min-height:100vh; }
-    .sidebar { padding:25px 18px; border-right:1px solid var(--line-soft); background:rgba(8,11,20,.74); backdrop-filter:blur(16px); }
-    .brand { display:flex; align-items:center; gap:11px; margin:0 8px 34px; font-weight:750; letter-spacing:.2px; }
-    .brand-mark { display:grid; place-items:center; width:36px; height:36px; border-radius:12px; background:linear-gradient(145deg,#788bff,#a679ed); box-shadow:0 10px 22px rgba(124,140,255,.3); }
-    .brand-mark svg { width:22px; height:22px; }
-    .brand small { display:block; color:var(--muted); font-size:11px; font-weight:500; margin-top:1px; }
-    .nav-label { color:#64748b; font-size:11px; font-weight:700; letter-spacing:.11em; margin:0 10px 9px; text-transform:uppercase; }
-    .nav { display:grid; gap:5px; }
-    .nav button { border:0; background:transparent; color:var(--muted); border-radius:10px; text-align:left; padding:10px 11px; display:flex; align-items:center; gap:10px; }
-    .nav button:hover,.nav button.active { background:var(--surface-2); color:var(--text); }
-    .nav svg { width:17px; height:17px; opacity:.86; }
-    .sidebar-foot { position:fixed; bottom:22px; width:210px; border-top:1px solid var(--line-soft); padding:16px 10px 0; color:var(--muted); font-size:12px; }
-    .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--success); box-shadow:0 0 0 4px rgba(74,222,154,.1); margin-right:7px; }
-    .main { min-width:0; padding:28px clamp(18px,4vw,48px) 42px; }
-    .topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:27px; }
-    h1,h2,h3,p { margin:0; } h1 { font-size:25px; line-height:1.2; letter-spacing:-.035em; } h2 { font-size:15px; } h3 { font-size:14px; }
-    .eyebrow { color:var(--accent-2); font-size:11px; font-weight:750; letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px; }
-    .sub { color:var(--muted); margin-top:7px; }
-    .top-actions { display:flex; align-items:center; gap:9px; }
-    .health { color:var(--muted); font-size:12px; border:1px solid var(--line-soft); background:rgba(17,24,39,.68); padding:8px 11px; border-radius:10px; }
-    .icon-btn,.btn { border:1px solid var(--line); color:var(--text); background:var(--surface-2); border-radius:9px; padding:9px 13px; transition:.18s ease; }
-    .icon-btn { display:grid; place-items:center; padding:9px; }
-    .icon-btn svg { width:17px; height:17px; }
-    .btn:hover,.icon-btn:hover { border-color:var(--accent); transform:translateY(-1px); }
-    .btn.primary { border-color:#7584ff; background:linear-gradient(135deg,#6979f5,#8d72de); box-shadow:0 8px 20px rgba(106,121,245,.2); }
-    .btn.danger { color:#ffd7df; border-color:rgba(255,113,136,.34); background:rgba(137,35,62,.22); }
-    .btn.ghost { background:transparent; }
-    .btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
-    .stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:17px; }
-    .stat,.panel { border:1px solid var(--line-soft); background:linear-gradient(145deg,rgba(23,32,51,.92),rgba(15,22,37,.92)); box-shadow:var(--shadow); }
-    .stat { border-radius:13px; padding:15px 17px; }
-    .stat-label { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; }
-    .stat-value { margin-top:8px; font-size:25px; font-weight:760; letter-spacing:-.035em; }
-    .stat-accent { color:var(--accent); } .stat-success { color:var(--success); } .stat-warning { color:var(--warning); } .stat-danger { color:var(--danger); }
-    .workspace { display:grid; grid-template-columns:minmax(300px,.82fr) minmax(420px,1.18fr); gap:15px; align-items:start; }
-    .panel { border-radius:15px; overflow:hidden; }
-    .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:17px 18px 14px; border-bottom:1px solid var(--line-soft); }
-    .panel-title { display:flex; align-items:center; gap:9px; } .panel-title svg { width:16px; color:var(--accent); }
-    .count { color:var(--muted); font-size:12px; }
-    .composer { padding:18px; }
-    label { display:block; color:var(--muted); font-size:12px; font-weight:600; margin:0 0 7px; }
-    textarea,input,select { width:100%; color:var(--text); background:#0b1220; border:1px solid var(--line); border-radius:9px; padding:10px 11px; outline:none; }
-    textarea { min-height:125px; resize:vertical; } textarea:focus,input:focus,select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(124,140,255,.12); }
-    .field { margin-bottom:14px; } .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .hint { color:#71809a; font-size:11px; margin-top:6px; }
-    .form-actions { display:flex; align-items:center; gap:10px; margin-top:17px; } .message { color:var(--muted); font-size:12px; }
-    .list-tools { padding:13px 15px 11px; border-bottom:1px solid var(--line-soft); }
-    .search { position:relative; } .search svg { position:absolute; left:10px; top:10px; width:16px; color:#71809a; } .search input { padding-left:34px; }
-    .filters { display:flex; gap:6px; overflow:auto; margin-top:10px; scrollbar-width:none; } .filters::-webkit-scrollbar { display:none; }
-    .filter { white-space:nowrap; border:1px solid transparent; color:var(--muted); background:transparent; border-radius:8px; padding:6px 9px; font-size:12px; }
-    .filter:hover,.filter.active { color:var(--text); background:var(--surface-3); border-color:var(--line); }
-    .runs { max-height:520px; overflow:auto; padding:7px; } .empty { color:var(--muted); text-align:center; padding:43px 18px; }
-    .run { position:relative; padding:13px 12px; border:1px solid transparent; border-radius:11px; cursor:pointer; }
-    .run + .run { margin-top:3px; } .run:hover { background:rgba(38,52,77,.36); border-color:var(--line-soft); } .run.selected { background:linear-gradient(90deg,rgba(92,107,232,.18),rgba(92,107,232,.04)); border-color:rgba(124,140,255,.55); }
-    .run-top { display:flex; align-items:center; justify-content:space-between; gap:8px; } .run-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:620; }
-    .run-time { color:#697994; font-size:11px; flex:0 0 auto; } .run-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--muted); font-size:11px; margin-top:7px; }
-    .badge { display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:700; background:rgba(141,154,177,.13); color:#b5c1d8; }
-    .badge::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; } .badge.running,.badge.pending { color:var(--warning); background:rgba(246,199,104,.12); } .badge.completed { color:var(--success); background:rgba(74,222,154,.11); } .badge.failed,.badge.cancelled { color:var(--danger); background:rgba(255,113,136,.11); }
-    .detail { grid-column:2; grid-row:1 / span 2; min-height:570px; }
-    .detail-head { padding:18px 20px; } .detail-id { color:var(--muted); font:11px ui-monospace,SFMono-Regular,Consolas,monospace; margin-top:5px; }
-    .detail-actions { display:flex; gap:8px; }
-    .detail-body { padding:20px; } .detail-task { font-size:17px; line-height:1.45; letter-spacing:-.015em; margin-bottom:16px; }
-    .chat { display:flex; flex-direction:column; gap:14px; }
-    .chat-message { max-width:92%; border-radius:13px; padding:11px 13px; white-space:pre-wrap; word-break:break-word; }
-    .chat-message.user { align-self:flex-end; background:linear-gradient(135deg,#5968d8,#7561bd); color:#f7f8ff; border-bottom-right-radius:4px; }
-    .chat-message.assistant { align-self:flex-start; background:#0b1220; border:1px solid var(--line-soft); border-bottom-left-radius:4px; color:#dce5f5; }
-    .chat-message.assistant.error { border-color:rgba(255,113,136,.42); color:#ffd7df; }
-    .chat-label { color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; margin-bottom:5px; }
-    .chat-actions { display:flex; flex-direction:column; gap:7px; margin-left:10px; }
-    .action-card { border:1px solid rgba(124,140,255,.22); background:rgba(42,52,93,.24); border-radius:10px; padding:9px 11px; }
-    .action-card.result { border-color:var(--line-soft); background:rgba(11,18,32,.62); }
-    .action-head { display:flex; align-items:center; gap:7px; color:#cbd5ff; font-size:12px; font-weight:700; }
-    .action-head .action-icon { color:var(--accent); }
-    .action-card.result .action-head { color:var(--muted); }
-    .action-detail { margin-top:5px; color:var(--muted); font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; word-break:break-word; max-height:150px; overflow:auto; }
-    .meta-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:19px; } .meta { border:1px solid var(--line-soft); background:rgba(11,18,32,.65); border-radius:10px; padding:10px; } .meta span { display:block; color:var(--muted); font-size:11px; } .meta b { display:block; margin-top:4px; font-size:13px; }
-    .section-label { display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:12px; font-weight:700; margin:18px 0 8px; }
-    pre { margin:0; max-height:230px; overflow:auto; white-space:pre-wrap; word-break:break-word; color:#cdd8ea; background:#090f1b; border:1px solid var(--line-soft); border-radius:10px; padding:13px; font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; }
-    .events { grid-column:1 / -1; } .events-body { padding:0 18px 18px; } .event-status { color:var(--muted); font-size:11px; } .event-status.connected { color:var(--success); }
-    .event-stream { max-height:260px; overflow:auto; padding-top:11px; } .event { display:grid; grid-template-columns:70px 1fr; gap:10px; padding:10px 0; border-bottom:1px solid var(--line-soft); } .event:last-child { border-bottom:0; } .event-time { color:#6e7d97; font:11px ui-monospace,SFMono-Regular,Consolas,monospace; } .event-name { color:#dce5f5; font-weight:650; font-size:12px; } .event-payload { color:var(--muted); font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; word-break:break-word; margin-top:3px; }
-    .toast { position:fixed; right:22px; bottom:22px; z-index:5; max-width:340px; padding:12px 15px; border:1px solid var(--line); background:#18233a; border-radius:10px; box-shadow:var(--shadow); color:var(--text); opacity:0; transform:translateY(10px); pointer-events:none; transition:.2s ease; } .toast.show { opacity:1; transform:none; } .toast.error { border-color:rgba(255,113,136,.5); }
-    @media (max-width:980px) { .shell { grid-template-columns:72px minmax(0,1fr); } .sidebar { padding:20px 10px; } .brand { margin:0 8px 30px; } .brand-copy,.nav-label,.nav button span,.sidebar-foot { display:none; } .nav button { justify-content:center; } .detail { grid-column:1 / -1; grid-row:auto; } }
-    @media (max-width:700px) { .shell { display:block; } .sidebar { display:none; } .main { padding:20px 13px 30px; } .topbar { display:block; } .top-actions { margin-top:17px; justify-content:space-between; } .stats { grid-template-columns:repeat(2,1fr); } .workspace { display:flex; flex-direction:column; } .panel,.detail,.events { width:100%; } .detail { min-height:0; } .meta-grid { grid-template-columns:1fr 1fr; } }
-  </style>
-</head>
-<body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M5.5 14.5V8.8L8 6l4 2 4-2 2.5 2.8v5.7a6.5 6.5 0 0 1-13 0Z"/><path d="M8 4.5 9.5 7M16 4.5 14.5 7M9 14h.01M15 14h.01M9.5 17c1.4 1 3.6 1 5 0"/></svg></div><div class="brand-copy">MewCode<small>Agent Runtime</small></div></div>
-      <div class="nav-label">Workspace</div>
-      <nav class="nav"><button class="active" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>运行概览</span></button><button type="button" onclick="focusComposer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg><span>新建任务</span></button></nav>
-      <div class="sidebar-foot"><span class="dot"></span>本地运行时在线</div>
-    </aside>
-    <main class="main">
-      <header class="topbar"><div><div class="eyebrow">Runtime workspace</div><h1>运行概览</h1><p class="sub">提交任务、跟踪进度，并在一个地方查看完整事件链。</p></div><div class="top-actions"><span class="health" id="health">检查服务中…</span><button class="icon-btn" id="refresh" title="刷新运行列表" aria-label="刷新运行列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8.1 8.1 0 0 0-14.9-4L3 10"/><path d="M3 5v5h5M4 13a8.1 8.1 0 0 0 14.9 4L21 14"/><path d="M21 19v-5h-5"/></svg></button></div></header>
-      <section class="stats" aria-label="运行统计"><div class="stat"><div class="stat-label"><span>全部运行</span><span>◌</span></div><div class="stat-value stat-accent" id="stat-total">0</div></div><div class="stat"><div class="stat-label"><span>运行中</span><span>↗</span></div><div class="stat-value stat-warning" id="stat-running">0</div></div><div class="stat"><div class="stat-label"><span>已完成</span><span>✓</span></div><div class="stat-value stat-success" id="stat-completed">0</div></div><div class="stat"><div class="stat-label"><span>需关注</span><span>!</span></div><div class="stat-value stat-danger" id="stat-failed">0</div></div></section>
-      <div class="workspace">
-        <section class="panel composer" id="composer"><div class="panel-title" style="justify-content:space-between;margin-bottom:17px"><div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg><h2>与 LLM 对话</h2></div><button class="btn ghost" type="button" onclick="focusComposer(true)">新会话</button></div><form id="submit-form"><div class="field"><label for="task">消息</label><textarea id="task" required placeholder="输入你的问题或开发任务，例如：分析 runtime 模块并补充测试"></textarea><div class="hint">同一会话会保留上下文；发送后可继续追问，右侧会显示回答和工具操作。</div></div><div class="field-row"><div class="field"><label for="attempts">最大尝试次数</label><input id="attempts" type="number" min="1" max="5" value="1"></div><div class="field"><label for="timeout">超时（秒）</label><input id="timeout" type="number" min="1" placeholder="不限制"></div></div><div class="form-actions"><button class="btn primary" type="submit">发送消息</button><span id="submit-message" class="message"></span></div></form></section>
-        <section class="panel runs-panel"><div class="panel-head"><div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><h2>运行历史</h2></div><span class="count" id="run-count">0 个任务</span></div><div class="list-tools"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input id="search" type="search" placeholder="搜索任务或运行 ID"></div><div class="filters" id="filters"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="running">运行中</button><button class="filter" data-filter="completed">已完成</button><button class="filter" data-filter="failed">失败</button><button class="filter" data-filter="cancelled">已取消</button></div></div><div class="runs" id="runs"><div class="empty">正在加载运行记录…</div></div></section>
-        <section class="panel detail" id="detail-panel"><div class="panel-head detail-head"><div><div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><h2>对话与操作</h2></div><div class="detail-id" id="detail-id">尚未选择任务</div></div><div class="detail-actions"><button class="btn danger" id="cancel" disabled>取消</button><button class="btn" id="retry" disabled>重试</button></div></div><div class="detail-body" id="detail"><div class="empty">发送消息或从左侧选择一个任务查看对话</div></div></section>
-        <section class="panel events"><div class="panel-head"><div class="panel-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><h2>实时事件</h2></div><span class="event-status" id="event-status">未连接</span></div><div class="events-body"><div class="event-stream" id="events"><div class="empty">选择运行后，事件会在这里实时显示。</div></div></div></section>
-      </div>
-    </main>
-  </div>
-  <div class="toast" id="toast" role="status"></div>
-<script>
-  const newSessionId = () => (crypto.randomUUID ? crypto.randomUUID() : `web-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  const state = { runs: [], selected: null, sessionId: newSessionId(), filter: 'all', query: '', source: null, lastEventId: 0, eventCount: 0, toastTimer: null };
-  const $ = id => document.getElementById(id);
-  const labels = {pending:'排队中',running:'运行中',waiting_approval:'等待审批',completed:'已完成',failed:'失败',cancelled:'已取消'};
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const time = stamp => stamp ? new Date(stamp * 1000).toLocaleString() : '-';
-  const shortTime = stamp => stamp ? new Date(stamp * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '-';
-  async function api(path, options) { const response = await fetch(path, options); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.detail || data.error?.message || response.statusText); return data; }
-  function notify(message, error = false) { const toast = $('toast'); toast.textContent = message; toast.className = `toast show${error ? ' error' : ''}`; clearTimeout(state.toastTimer); state.toastTimer = setTimeout(() => toast.className = 'toast', 3200); }
-  function updateStats() { const count = status => state.runs.filter(r => r.status === status).length; $('stat-total').textContent = state.runs.length; $('stat-running').textContent = count('running') + count('pending'); $('stat-completed').textContent = count('completed'); $('stat-failed').textContent = count('failed') + count('cancelled'); }
-  function visibleRuns() { const query = state.query.trim().toLowerCase(); return state.runs.filter(run => (state.filter === 'all' || run.status === state.filter) && (!query || `${run.id} ${run.task}`.toLowerCase().includes(query))); }
-  function renderRuns() { const runs = visibleRuns(); $('run-count').textContent = `${runs.length}/${state.runs.length} 个任务`; $('runs').innerHTML = runs.length ? runs.map(run => `<article class="run ${run.id === state.selected ? 'selected' : ''}" data-id="${esc(run.id)}"><div class="run-top"><div class="run-title">${esc(run.task)}</div><span class="run-time">${esc(shortTime(run.created_at))}</span></div><div class="run-meta"><span class="badge ${esc(run.status)}">${esc(labels[run.status] || run.status)}</span><span>尝试 ${esc(run.attempt)}/${esc(run.max_attempts)}</span></div></article>`).join('') : '<div class="empty">没有符合条件的运行</div>'; document.querySelectorAll('.run').forEach(el => el.onclick = () => selectRun(el.dataset.id)); updateStats(); }
-  function renderDetail(run) { if (!run) { $('detail-id').textContent = '尚未选择任务'; $('detail').innerHTML = '<div class="empty">发送消息或从左侧选择一个任务查看对话</div>'; $('cancel').disabled = $('retry').disabled = true; return; } const terminal = ['completed','failed','cancelled'].includes(run.status); state.sessionId = run.session_id || state.sessionId; $('detail-id').textContent = `${run.id} · ${time(run.created_at)} · 会话 ${state.sessionId.slice(0, 8)}`; $('detail').innerHTML = `<div class="meta-grid"><div class="meta"><span>状态</span><b><span class="badge ${esc(run.status)}">${esc(labels[run.status] || run.status)}</span></b></div><div class="meta"><span>尝试次数</span><b>${esc(run.attempt)} / ${esc(run.max_attempts)}</b></div><div class="meta"><span>会话</span><b>${esc(state.sessionId.slice(0, 12))}</b></div></div><div class="chat" id="chat"><div class="chat-message user"><div class="chat-label">你</div>${esc(run.task)}</div><div class="chat-message assistant" id="assistant-message"><div class="chat-label">MewCode</div><span class="assistant-text">${esc(run.result || run.error || '正在思考…')}</span></div><div class="chat-actions" id="chat-actions"></div></div>`; if (run.status === 'failed' && run.error) $('assistant-message').classList.add('error'); $('cancel').disabled = terminal; $('retry').disabled = !['failed','cancelled'].includes(run.status); }
-  function appendConversationEvent(event) { const assistant = $('assistant-message'); const actions = $('chat-actions'); if (!assistant || !actions) return; if (event.event_type === 'stream_text') { assistant.querySelector('.assistant-text').textContent = event.payload?.text || ''; } else if (event.event_type === 'tool_use') { const args = event.payload?.args; actions.insertAdjacentHTML('beforeend', `<div class="action-card"><div class="action-head"><span class="action-icon">⚙</span>正在操作 · ${esc(event.payload?.toolName || 'tool')}</div><div class="action-detail">${esc(typeof args === 'string' ? args : JSON.stringify(args || {}, null, 2))}</div></div>`); } else if (event.event_type === 'tool_result') { const output = event.payload?.output || ''; const error = event.payload?.is_error; actions.insertAdjacentHTML('beforeend', `<div class="action-card result"><div class="action-head"><span class="action-icon">${error ? '!' : '✓'}</span>${error ? '操作失败' : '操作完成'} · ${esc(event.payload?.toolName || 'tool')}</div><div class="action-detail">${esc(output)}</div></div>`); } else if (event.event_type === 'run_failed') { assistant.querySelector('.assistant-text').textContent = event.payload?.error || '运行失败'; assistant.classList.add('error'); } else if (event.event_type === 'run_completed' && assistant.querySelector('.assistant-text').textContent === '正在思考…') { assistant.querySelector('.assistant-text').textContent = event.payload?.result || ''; } }
-  function appendEvent(event) { state.lastEventId = Math.max(state.lastEventId, Number(event.sequence || 0)); state.eventCount += 1; const stream = $('events'); if (state.eventCount === 1) stream.innerHTML = ''; const payload = Object.keys(event.payload || {}).length ? `\n${esc(JSON.stringify(event.payload, null, 2))}` : ''; stream.insertAdjacentHTML('beforeend', `<div class="event"><div class="event-time">${esc(shortTime(event.timestamp))}</div><div><div class="event-name">${esc(event.event_type)} <span style="color:#62708a">#${esc(event.sequence)}</span></div><div class="event-payload">${payload}</div></div></div>`); stream.scrollTop = stream.scrollHeight; }
-  function setEventStatus(text, connected = false) { $('event-status').textContent = text; $('event-status').className = `event-status${connected ? ' connected' : ''}`; }
-  function watch(run, after = 0) { if (state.source) state.source.close(); if (!after) { state.lastEventId = 0; state.eventCount = 0; $('events').innerHTML = '<div class="empty">正在连接事件流…</div>'; } setEventStatus('连接中…'); const source = state.source = new EventSource(`/v1/runs/${encodeURIComponent(run.id)}/events?after=${state.lastEventId}`); const types = ['run_created','run_started','run_completed','run_failed','run_cancelled','run_timeout','run_retrying','run_recovered','agent_event','stream_text','tool_use','tool_result','usage']; const consume = event => { try { const parsed = JSON.parse(event.data); appendEvent(parsed); appendConversationEvent(parsed); } catch (_) { return; } setEventStatus('实时连接', true); refresh(false); if (['run_completed','run_failed','run_cancelled'].includes(event.type)) { source.close(); state.source = null; setEventStatus('运行结束', true); } }; types.forEach(type => source.addEventListener(type, consume)); source.onopen = () => setEventStatus('实时连接', true); source.onerror = () => { if (state.source !== source) return; source.close(); state.source = null; const current = state.runs.find(item => item.id === run.id); if (current && !['completed','failed','cancelled'].includes(current.status)) { setEventStatus('连接断开，自动重试…'); window.setTimeout(() => { if (state.selected === run.id) watch(run, state.lastEventId); }, 1200); } else { setEventStatus('运行结束', true); } }; }
-  async function refresh(showToast = true) { try { const data = await api('/v1/runs?limit=100'); state.runs = data.runs || []; renderRuns(); if (state.selected) { const current = state.runs.find(r => r.id === state.selected); if (current) renderDetail(current); } if (showToast) notify('运行列表已刷新'); } catch (error) { $('runs').innerHTML = `<div class="empty">加载失败：${esc(error.message)}</div>`; if (showToast) notify(error.message, true); } }
-  async function selectRun(id) { state.selected = id; renderRuns(); try { const run = await api(`/v1/runs/${encodeURIComponent(id)}`); renderDetail(run); watch(run); $('detail-panel').scrollIntoView({behavior:'smooth', block:'nearest'}); } catch (error) { notify(error.message, true); } }
-  async function health() { try { const result = await api('/health'); $('health').innerHTML = '<span class="dot"></span>服务在线'; $('health').title = `${result.runs ?? 0} 个运行记录`; } catch (_) { $('health').textContent = '服务检查失败'; } }
-  function focusComposer(newSession = false) { if (newSession) { if (state.source) state.source.close(); state.source = null; state.sessionId = newSessionId(); state.selected = null; state.eventCount = 0; setEventStatus('未连接'); renderRuns(); renderDetail(null); notify('已创建新会话'); } $('task').focus(); $('composer').scrollIntoView({behavior:'smooth', block:'center'}); }
-  $('refresh').onclick = () => refresh(true); $('search').oninput = event => { state.query = event.target.value; renderRuns(); }; document.querySelectorAll('.filter').forEach(button => button.onclick = () => { document.querySelectorAll('.filter').forEach(item => item.classList.remove('active')); button.classList.add('active'); state.filter = button.dataset.filter; renderRuns(); });
-  $('submit-form').onsubmit = async event => { event.preventDefault(); const message = $('submit-message'); message.textContent = '发送中…'; try { const payload = {task:$('task').value.trim(), session_id:state.sessionId, max_attempts:Number($('attempts').value)}; if ($('timeout').value) payload.timeout_seconds = Number($('timeout').value); const run = await api('/v1/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); $('task').value = ''; message.textContent = `已发送 · ${run.id}`; notify('消息已发送'); await refresh(false); await selectRun(run.id); } catch (error) { message.textContent = `发送失败：${error.message}`; notify(error.message, true); } };
-  $('cancel').onclick = async () => { if (!state.selected) return; $('cancel').disabled = true; try { await api(`/v1/runs/${encodeURIComponent(state.selected)}/cancel`, {method:'POST'}); notify('已发送取消请求'); await refresh(false); await selectRun(state.selected); } catch (error) { notify(error.message, true); } };
-  $('retry').onclick = async () => { if (!state.selected) return; $('retry').disabled = true; try { const run = await api(`/v1/runs/${encodeURIComponent(state.selected)}/retry`, {method:'POST'}); notify('已创建重试任务'); await refresh(false); await selectRun(run.id); } catch (error) { notify(error.message, true); } };
-  refresh(false); health();
-</script>
-</body>
-</html>"""
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f5f7"><title>MewCode · 工作台</title>
+<style>
+:root{color-scheme:light;--bg:#f5f5f7;--sidebar:#f8f8fae8;--card:#ffffffd9;--solid:#fff;--ink:#1d1d1f;--muted:#86868b;--line:#d2d2d7;--line-soft:#e7e7eb;--blue:#0071e3;--blue-soft:#e8f2ff;--green:#198754;--orange:#bf7000;--red:#d93852;--purple:#7454d8;--shadow:0 15px 42px #1d1d1f0f}*{box-sizing:border-box}body{margin:0;min-width:900px;background:radial-gradient(circle at 80% -15%,#e5edff,transparent 34%),var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",sans-serif;letter-spacing:-.01em}button,input,textarea,select{font:inherit}button{cursor:pointer;border:0}.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}.sidebar{background:var(--sidebar);border-right:1px solid #0000000d;padding:28px 16px;backdrop-filter:blur(24px);display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:10px;padding:0 11px 32px;font-size:18px;font-weight:720;letter-spacing:-.04em}.mark{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(140deg,#262626,#757575);color:#fff;box-shadow:0 5px 14px #0002}.mark svg{width:20px}.brand small{display:block;color:var(--muted);font-size:10px;font-weight:500;letter-spacing:0;margin-top:2px}.section-label{padding:0 11px 8px;color:var(--muted);font-size:11px;font-weight:650}.nav{display:grid;gap:3px}.nav button{display:flex;align-items:center;gap:11px;width:100%;padding:10px 11px;border-radius:9px;background:transparent;color:#626267;text-align:left}.nav button:hover,.nav button.active{background:#00000008;color:var(--ink)}.nav button.active{font-weight:650}.nav svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7}.side-provider{margin-top:auto;border-top:1px solid var(--line-soft);padding:17px 10px 0}.side-provider button{display:flex;align-items:center;gap:8px;padding:0;background:transparent;color:var(--ink);text-align:left}.provider-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px #19875418}.side-provider small{display:block;color:var(--muted);font-size:11px;margin-top:5px;padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.main{min-width:0;padding:30px clamp(24px,4vw,60px) 50px}.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:25px}.eyebrow{color:var(--blue);font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}.topbar h1{font-size:29px;letter-spacing:-.055em;margin:5px 0 4px}.topbar p{color:var(--muted);margin:0}.top-actions{display:flex;align-items:center;gap:9px}.health{border:1px solid var(--line);border-radius:20px;padding:7px 11px;color:var(--muted);font-size:12px;background:var(--card)}.health .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px}.icon{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:var(--solid);color:var(--ink)}.icon:hover,.text-btn:hover{border-color:var(--blue);color:var(--blue)}.icon svg{width:16px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:17px}.card{border:1px solid #0000000a;border-radius:17px;background:var(--card);box-shadow:var(--shadow);backdrop-filter:blur(24px);overflow:hidden}.chat-card{min-height:685px;display:flex;flex-direction:column}.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:19px 21px;border-bottom:1px solid var(--line-soft)}.card-head h2{font-size:15px;margin:0;letter-spacing:-.025em}.muted{color:var(--muted)}.text-btn{border:1px solid transparent;background:transparent;color:var(--blue);padding:6px 8px;border-radius:8px}.chat{display:flex;flex-direction:column;gap:13px;flex:1;overflow:auto;padding:24px 22px}.chat-empty{text-align:center;color:var(--muted);padding:80px 20px}.bubble{max-width:86%;padding:12px 14px;border-radius:15px;white-space:pre-wrap;word-break:break-word}.bubble.user{align-self:flex-end;background:#0071e3;color:#fff;border-bottom-right-radius:5px}.bubble.assistant{align-self:flex-start;background:#f0f0f2;border-bottom-left-radius:5px}.bubble.error{color:var(--red);background:#fff0f2}.bubble-label{font-size:10px;font-weight:700;color:#ffffffb8;margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em}.assistant .bubble-label{color:var(--muted)}.chat-actions{display:flex;flex-direction:column;gap:7px;margin-left:10px}.action{border-left:2px solid var(--blue);padding:8px 11px;background:var(--blue-soft);border-radius:8px;color:#385074;font-size:12px}.action.result{border-left-color:#c4c4c8;background:#f6f6f8;color:#727277}.action b{display:block;color:var(--ink);font-size:12px;margin-bottom:3px}.action pre{max-height:110px;margin:0;white-space:pre-wrap;word-break:break-word;color:inherit;font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}.composer{border-top:1px solid var(--line-soft);padding:15px 18px 17px}.composer-box{display:flex;align-items:flex-end;gap:10px;border:1px solid var(--line);border-radius:14px;padding:9px;background:var(--solid);transition:.18s}.composer-box:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px #0071e31a}.composer textarea{flex:1;min-height:54px;max-height:150px;border:0;outline:0;resize:vertical;color:var(--ink);background:transparent;padding:3px 5px}.send{width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center}.send:hover{background:#0077ed;transform:scale(1.03)}.send:disabled{opacity:.45;transform:none}.composer-foot{display:flex;justify-content:space-between;align-items:center;padding:8px 4px 0;color:var(--muted);font-size:11px}.model-pill{display:inline-flex;align-items:center;gap:6px;max-width:260px;border:1px solid var(--line);background:var(--solid);border-radius:20px;padding:7px 10px;color:var(--ink);font-size:12px}.model-pill:hover{border-color:var(--blue)}.model-pill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.inspector{display:flex;flex-direction:column;gap:15px}.mini-card{padding:18px}.mini-card h3{font-size:13px;margin:0 0 13px}.provider-select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--solid);color:var(--ink);outline:0}.provider-select:focus{border-color:var(--blue)}.provider-meta{display:flex;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted);font-size:11px}.key-ok{color:var(--green)}.runs{max-height:365px;overflow:auto}.run{display:block;width:100%;padding:10px 0;border-bottom:1px solid var(--line-soft);background:transparent;text-align:left}.run:last-child{border-bottom:0}.run:hover{color:var(--blue)}.run-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}.run-meta{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:4px}.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px}.badge:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.running,.pending{color:var(--orange)}.completed{color:var(--green)}.failed,.cancelled{color:var(--red)}.activity{max-height:300px;overflow:auto}.event{padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:11px}.event:last-child{border:0}.event-top{display:flex;justify-content:space-between;color:var(--muted)}.event-name{color:var(--ink);font-weight:650}.event-detail{margin-top:4px;color:var(--muted);white-space:pre-wrap;word-break:break-word;font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}.modal{position:fixed;inset:0;z-index:5;display:none;background:#0003;backdrop-filter:blur(9px);align-items:flex-end;justify-content:flex-end}.modal.open{display:flex}.sheet{width:min(570px,100%);height:100%;background:var(--solid);border-left:1px solid var(--line);box-shadow:-18px 0 50px #0002;padding:28px 28px 35px;overflow:auto}.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}.sheet h2{font-size:23px;letter-spacing:-.045em;margin:0 0 5px}.sheet p{color:var(--muted);font-size:13px;margin:0}.close{width:30px;height:30px;border-radius:50%;background:#00000008;color:var(--muted);font-size:18px}.catalog{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0 20px}.catalog button{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);text-align:left;color:var(--ink)}.catalog button:hover,.catalog button.selected{border-color:var(--blue);background:var(--blue-soft)}.catalog b{display:block;font-size:12px}.catalog small{color:var(--muted);font-size:10px}.field{margin:13px 0}.field label{display:block;color:var(--muted);font-size:11px;font-weight:650;margin-bottom:6px}.field input,.field select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:var(--solid);color:var(--ink);outline:0}.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px #0071e31a}.sheet-actions{display:flex;gap:9px;margin-top:22px}.primary{background:var(--blue);color:#fff;padding:10px 15px;border-radius:10px}.secondary{background:var(--bg);color:var(--ink);padding:10px 15px;border-radius:10px}.toast{position:fixed;z-index:8;left:50%;bottom:28px;transform:translate(-50%,12px);opacity:0;pointer-events:none;background:#1d1d1fee;color:#fff;padding:10px 15px;border-radius:11px;box-shadow:var(--shadow);transition:.2s}.toast.show{opacity:1;transform:translate(-50%,0)}@media(max-width:1120px){.app{grid-template-columns:80px 1fr}.sidebar{padding:25px 10px}.brand{padding:0 10px 32px}.brand-copy,.section-label,.nav span,.side-provider{display:none}.nav button{justify-content:center}.layout{grid-template-columns:1fr 270px}}@media(max-width:760px){body{min-width:320px}.app{display:block}.sidebar{display:none}.main{padding:20px 13px}.topbar{display:block}.top-actions{margin-top:15px}.layout{display:block}.inspector{margin-top:15px}.chat-card{min-height:620px}.bubble{max-width:94%}.modal{align-items:stretch}.sheet{width:100%;height:100%;border:0}}
+.dark{color-scheme:dark;--bg:#161617;--sidebar:#1c1c1ee8;--card:#242426e6;--solid:#2c2c2ee8;--ink:#f5f5f7;--muted:#98989d;--line:#4a4a4f;--line-soft:#ffffff13;--blue:#2997ff;--blue-soft:#153451;--shadow:0 18px 45px #0003}.dark .bubble.assistant{background:#303034}.dark .action{color:#bbd8fa}.dark .action.result{background:#303034;color:#b9b9bf}.dark .action b{color:var(--ink)}.dark .side-provider small{color:var(--muted)}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 14V8l3-3 4 2 4-2 3 3v6a7 7 0 0 1-14 0Z"/><path d="M8 4.5 9.5 7M16 4.5 14.5 7M9 14h.01M15 14h.01M9.5 17c1.5 1 3.5 1 5 0"/></svg></div><div class="brand-copy">MewCode<small>AI coding workspace</small></div></div><div class="section-label">WORKSPACE</div><nav class="nav"><button class="active" type="button" onclick="showView('chat')"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H8l-3 3V5Z"/><path d="M8 9h8M8 12h5"/></svg><span>对话</span></button><button type="button" onclick="focusRuns()"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>运行记录</span></button><button type="button" onclick="openProviderSheet()"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg><span>模型与连接</span></button></nav><div class="side-provider"><button type="button" onclick="openProviderSheet()"><i class="provider-dot"></i><span id="side-provider-name">加载模型中</span></button><small id="side-provider-model">—</small></div></aside><main class="main"><header class="topbar"><div><div class="eyebrow">MewCode workspace</div><h1>运行概览</h1><p>与模型协作，查看每一步操作，并保持工作上下文。</p></div><span id="stat-total" style="display:none">0</span><div class="top-actions"><span class="health" id="health">检查服务中…</span><button class="icon" title="切换外观" onclick="toggleTheme()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg></button><button class="icon" title="刷新" id="refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 0 0-15-3M4 5v4h4M4 13a8 8 0 0 0 15 3M20 19v-4h-4"/></svg></button></div></header><div class="layout"><section class="card chat-card" id="chat-view"><div class="card-head"><div><h2>与 LLM 对话</h2><span class="muted" id="session-label">新会话</span></div><div><button class="text-btn" type="button" onclick="newSession()">新会话</button><button class="text-btn" type="button" onclick="openProviderSheet()">模型设置</button></div></div><div class="chat" id="chat"><div class="chat-empty">从一句问题开始。模型的回答、工具调用和结果会按时间顺序显示在这里。</div></div><form class="composer" id="submit-form"><div class="composer-box"><textarea id="task" required placeholder="给 MewCode 一个任务…" aria-label="消息"></textarea><button class="send" id="send" type="submit" aria-label="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 14-7-3 14-4-5-7-2Z"/><path d="M12 14 19 5"/></svg></button></div><div class="composer-foot"><button class="model-pill" id="model-pill" type="button" onclick="openProviderSheet()"><i class="provider-dot"></i><span>加载模型中</span></button><span id="submit-message">Enter 发送 · Shift+Enter 换行</span></div></form></section><aside class="inspector"><section class="card mini-card"><h3>当前模型</h3><select class="provider-select" id="provider-select" onchange="activateProvider(this.value)"><option>加载中…</option></select><div class="provider-meta"><span id="provider-protocol">—</span><span id="provider-key" class="key-ok">—</span></div></section><section class="card mini-card" id="runs-panel"><h3>最近运行 <span class="muted" id="run-count"></span></h3><input id="run-search" class="provider-select" style="margin-bottom:10px" placeholder="搜索任务或运行 ID"><div class="runs" id="runs"><div class="muted">正在加载…</div></div><button class="text-btn" type="button" onclick="focusRuns()">查看全部运行</button></section><section class="card mini-card"><div style="display:flex;justify-content:space-between;align-items:center"><h3>活动</h3><span class="muted" id="event-status">未连接</span></div><div class="activity" id="events"><div class="muted">选择一个运行查看活动。</div></div></section></aside></div></main></div><div class="modal" id="provider-modal" onclick="if(event.target===this)closeProviderSheet()"><section class="sheet"><div class="sheet-head"><div><h2>模型与连接</h2><p>选择供应商，或配置一个 OpenAI-compatible 中转站。</p></div><button class="close" type="button" onclick="closeProviderSheet()">×</button></div><h3 style="font-size:13px">快速选择</h3><div class="catalog" id="catalog"></div><form id="provider-form"><div class="field"><label>显示名称</label><input id="provider-name" required placeholder="例如：我的百炼"></div><div class="field"><label>协议</label><select id="provider-protocol"><option value="openai-compat">OpenAI-compatible</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></div><div class="field"><label>Base URL</label><input id="provider-base" required placeholder="https://api.example.com/v1"></div><div class="field"><label>模型名称</label><input id="provider-model" required placeholder="qwen3.7-flash-2026-07-15"></div><div class="field"><label>API Key 或环境变量占位符</label><input id="provider-key-input" type="password" placeholder="${DASHSCOPE_API_KEY} 或直接输入密钥"><small class="muted">列表只显示是否配置，不会回显密钥；直接输入的密钥只保存在本机 ignored 配置。</small></div><div class="sheet-actions"><button class="primary" type="submit">保存并使用</button><button class="secondary" type="button" onclick="closeProviderSheet()">取消</button></div></form></section></div><div class="toast" id="toast"></div><script>
+const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),short=t=>t?new Date(t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'-',newId=()=>crypto.randomUUID?crypto.randomUUID():`web-${Date.now()}`;const state={runs:[],selected:null,providers:[],active:'',session:newId(),source:null,lastEvent:0,eventCount:0,filter:'all',query:''};
+async function api(path,opt){const r=await fetch(path,opt),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.detail||d.error?.message||r.statusText);return d}function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800)}function toggleTheme(){document.documentElement.classList.toggle('dark');localStorage.setItem('mew-theme',document.documentElement.classList.contains('dark')?'dark':'light')}if(localStorage.getItem('mew-theme')==='dark')document.documentElement.classList.add('dark');
+function openProviderSheet(){renderCatalog();$('provider-modal').classList.add('open')}function closeProviderSheet(){$('provider-modal').classList.remove('open')}function fillProvider(p){$('provider-name').value=p.label||p.name||'';$('provider-protocol').value=p.protocol||'openai-compat';$('provider-base').value=p.base_url||'';$('provider-model').value=p.model||'';$('provider-key-input').value='';document.querySelectorAll('.catalog button').forEach(b=>b.classList.toggle('selected',b.dataset.id===p.id))}function renderCatalog(){const catalog=state.catalog||[];$('catalog').innerHTML=catalog.map(p=>`<button type="button" data-id="${esc(p.id)}" onclick='fillProvider(${JSON.stringify(p).replace(/'/g,"&#39;")})'><b>${esc(p.label)}</b><small>${esc(p.kind)} · ${esc(p.env_var)}</small></button>`).join('')}async function loadProviders(){try{const d=await api('/v1/providers');state.providers=d.providers||[];state.catalog=d.catalog||[];state.active=d.active||state.providers[0]?.name||'';renderProviders();renderCatalog()}catch(e){toast(e.message)}}function renderProviders(){const select=$('provider-select');select.innerHTML=state.providers.length?state.providers.map(p=>`<option value="${esc(p.name)}" ${p.name===state.active?'selected':''}>${esc(p.name)} · ${esc(p.model)}</option>`).join(''):'<option>未配置模型</option>';const p=state.providers.find(x=>x.name===state.active);if(p){$('provider-protocol').textContent=`${p.protocol} · ${p.base_url}`;$('provider-key').textContent=p.api_key_configured?'密钥已配置':'未配置密钥';$('provider-key').className=p.api_key_configured?'key-ok':'';$('side-provider-name').textContent=p.name;$('side-provider-model').textContent=p.model;document.querySelector('#model-pill span').textContent=`${p.name} · ${p.model}`;$('session-label').textContent=`会话 ${state.session.slice(0,8)}`}}async function activateProvider(name){try{const p=await api(`/v1/providers/${encodeURIComponent(name)}/activate`,{method:'POST'});state.active=p.name;renderProviders();toast(`已切换到 ${p.name}`)}catch(e){toast(e.message)}}
+function renderRuns(){const q=state.query.trim().toLowerCase();const runs=state.runs.filter(r=>!q||`${r.id} ${r.task}`.toLowerCase().includes(q)).slice(0,8);$('run-count').textContent=`${runs.length}/${state.runs.length}`;$('stat-total').textContent=state.runs.length;$('runs').innerHTML=runs.length?runs.map(r=>`<button class="run" data-id="${esc(r.id)}"><div class="run-title">${esc(r.task)}</div><div class="run-meta"><span class="badge ${esc(r.status)}">${esc({pending:'排队中',running:'运行中',completed:'已完成',failed:'失败',cancelled:'已取消'}[r.status]||r.status)}</span><span>${esc(short(r.created_at))}</span></div></button>`).join(''):'<div class="muted">暂无运行记录</div>';document.querySelectorAll('.run').forEach(x=>x.onclick=()=>selectRun(x.dataset.id))}async function refresh(){try{const d=await api('/v1/runs?limit=100');state.runs=d.runs||[];renderRuns()}catch(e){toast(e.message)}}
+function renderChat(run){if(!run){$('chat').innerHTML='<div class="chat-empty">从一句问题开始。模型的回答、工具调用和结果会按时间顺序显示在这里。</div>';return}$('chat').innerHTML=`<div class="bubble user"><div class="bubble-label">你</div>${esc(run.task)}</div><div class="bubble assistant" id="assistant"><div class="bubble-label">MewCode · ${esc(state.active)}</div><span>${esc(run.result||run.error||'正在思考…')}</span></div><div class="chat-actions" id="chat-actions"></div>`}function appendEvent(e){state.lastEvent=Math.max(state.lastEvent,Number(e.sequence||0));state.eventCount++;const box=$('events');if(state.eventCount===1)box.innerHTML='';box.insertAdjacentHTML('beforeend',`<div class="event"><div class="event-top"><span class="event-name">${esc(e.event_type)}</span><span>${esc(short(e.timestamp))}</span></div><div class="event-detail">${esc(JSON.stringify(e.payload||{},null,2))}</div></div>`);box.scrollTop=box.scrollHeight}function appendChatEvent(e){const a=$('assistant'),actions=$('chat-actions');if(!a||!actions)return;if(e.event_type==='stream_text')a.querySelector('span').textContent=e.payload?.text||'';if(e.event_type==='tool_use'||e.event_type==='tool_result'){const done=e.event_type==='tool_result',bad=e.payload?.is_error;actions.insertAdjacentHTML('beforeend',`<div class="action ${done?'result':''}"><b>${done?(bad?'操作失败':'操作完成'):'正在操作'} · ${esc(e.payload?.toolName||'tool')}</b><pre>${esc(JSON.stringify(done?e.payload?.output:e.payload?.args||{},null,2))}</pre></div>`)}if(e.event_type==='run_failed'){a.classList.add('error');a.querySelector('span').textContent=e.payload?.error||'运行失败'}}function watch(run){if(state.source)state.source.close();state.lastEvent=0;state.eventCount=0;$('events').innerHTML='';$('event-status').textContent='连接中…';renderChat(run);const source=state.source=new EventSource(`/v1/runs/${encodeURIComponent(run.id)}/events?after=0`);['run_created','run_started','run_completed','run_failed','run_cancelled','run_timeout','run_retrying','run_recovered','agent_event','stream_text','tool_use','tool_result','usage'].forEach(type=>source.addEventListener(type,e=>{try{const x=JSON.parse(e.data);appendEvent(x);appendChatEvent(x);$('event-status').textContent='实时';refresh()}catch(_){}}));source.onopen=()=>$('event-status').textContent='实时';source.onerror=()=>$('event-status').textContent='连接重试中…'}async function selectRun(id){state.selected=id;try{const r=await api(`/v1/runs/${encodeURIComponent(id)}`);state.session=r.session_id||state.session;watch(r)}catch(e){toast(e.message)}}
+function newSession(){if(state.source)state.source.close();state.source=null;state.session=newId();state.selected=null;state.eventCount=0;$('session-label').textContent=`会话 ${state.session.slice(0,8)}`;renderChat(null);$('events').innerHTML='<div class="muted">选择一个运行查看活动。</div>';toast('已创建新会话');$('task').focus()}function focusComposer(){ $('task').focus();$('chat-view').scrollIntoView({behavior:'smooth'})}function focusRuns(){$('runs-panel').scrollIntoView({behavior:'smooth'})}function showView(view){if(view==='chat')focusComposer();else focusRuns()}
+$('run-search').oninput=e=>{state.query=e.target.value;renderRuns()};$('submit-form').onsubmit=async e=>{e.preventDefault();const task=$('task').value.trim();if(!task)return;const send=$('send');send.disabled=true;$('submit-message').textContent='正在发送…';try{const run=await api('/v1/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task,session_id:state.session,max_attempts:1,metadata:{provider:state.active}})});$('task').value='';$('submit-message').textContent='Enter 发送 · Shift+Enter 换行';await refresh();await selectRun(run.id)}catch(e){toast(e.message);$('submit-message').textContent=e.message}finally{send.disabled=false}};$('task').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('submit-form').requestSubmit()}});$('refresh').onclick=()=>{refresh();loadProviders()};
+$('provider-form').onsubmit=async e=>{e.preventDefault();try{const p=await api('/v1/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('provider-name').value.trim(),protocol:$('provider-protocol').value,base_url:$('provider-base').value.trim(),model:$('provider-model').value.trim(),api_key:$('provider-key-input').value,make_active:true,persist:true})});await loadProviders();state.active=p.name;renderProviders();closeProviderSheet();toast(`已保存并使用 ${p.name}`)}catch(e){toast(e.message)}};loadProviders();refresh();api('/health').then(x=>$('health').innerHTML='<span class="dot"></span>服务在线').catch(()=>$('health').textContent='服务检查失败');
+</script></body></html>"""

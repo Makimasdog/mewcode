@@ -25,7 +25,7 @@ from pathlib import Path
 
 from mewcode.agent import Agent
 from mewcode.client import create_client
-from mewcode.config import AppConfig
+from mewcode.config import AppConfig, ProviderConfig
 from mewcode.conversation import ConversationManager
 from mewcode.memory.instructions import load_instructions
 from mewcode.memory.session import Session, SessionManager
@@ -56,7 +56,8 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
     返回的 AgentRuntime 可直接用于 HTTP 服务或 CLI。
     """
     root = str(Path(work_dir or os.getcwd()).resolve())
-    provider = config.providers[0]
+    provider_configs: dict[str, ProviderConfig] = {p.name: p for p in config.providers}
+    provider_state = {"active": config.providers[0].name}
     session_manager = SessionManager(root)
     
     # 闭包状态：会话映射（同一 session_id 共享对话）
@@ -119,6 +120,8 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
         每次重试都会创建新的 Agent，确保状态干净。
         组装组件：LLM 客户端、权限检查器、工具注册表。
         """
+        provider_name = str(run.metadata.get("provider") or provider_state["active"])
+        provider = provider_configs.get(provider_name) or provider_configs[provider_state["active"]]
         client = create_client(provider)
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
@@ -144,9 +147,16 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
         agent.session_id = run.session_id or run.id
         return agent
 
-    return AgentRuntime(
+    runtime = AgentRuntime(
         agent_factory=factory,
         conversation_factory=get_conversation,
         conversation_saver=save_conversation,
         store=RunStore(Path(root) / ".mewcode" / "runs"),
     )
+    # HTTP controls can add/select profiles without rebuilding the process.
+    # The profile map remains in memory and is also exposed for local config
+    # persistence by the HTTP adapter.
+    runtime.provider_configs = provider_configs  # type: ignore[attr-defined]
+    runtime.provider_state = provider_state  # type: ignore[attr-defined]
+    runtime.config_root = Path(root)  # type: ignore[attr-defined]
+    return runtime
