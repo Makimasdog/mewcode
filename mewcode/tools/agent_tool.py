@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 class AgentToolParams(BaseModel):
     """
     Agent 工具的入参模型。
-    
+
     通过参数组合决定启动哪种类型的子 Agent：
     - 仅带 prompt: fork 当前对话（需开启 enable_fork）
     - 带 subagent_type: 启动预设类型的子 Agent（Explore/Plan/...）
@@ -93,7 +93,7 @@ TEAMMATE_ADDENDUM = (
 class AgentTool(Tool):
     """
     子 Agent 启动工具 — 核心编排器。
-    
+
     根据参数选择三种执行路径：
     1. 指定 team_name → 团队成员模式
     2. isolation="worktree" → Git worktree 隔离执行
@@ -135,6 +135,23 @@ class AgentTool(Tool):
         self._paper_stage_tasks: dict[str, list[str]] = {}
         self._event_callback = event_callback
 
+    def _emit(self, payload: dict[str, Any]) -> None:
+        if self._event_callback is not None:
+            self._event_callback(payload)
+
+    def _child_event_callback(self, agent: Agent, agent_type: str, name: str):
+        def callback(event: dict[str, Any]) -> None:
+            payload = dict(event)
+            payload.update({
+                "agent_id": agent.agent_id,
+                "parent_id": agent.parent_id,
+                "trace_id": agent.trace_id,
+                "agent_type": agent_type,
+                "agent_name": name,
+            })
+            self._emit(payload)
+        return callback
+
     def _paper_stage_block(self, agent_type: str | None) -> ToolResult | None:
         """Keep coordinator paper stages ordered and require successful prerequisites."""
         if not getattr(self._parent_agent, "coordinator_mode", False):
@@ -165,7 +182,7 @@ class AgentTool(Tool):
     async def execute(self, params: BaseModel) -> ToolResult:
         """
         Agent 工具主入口。
-        
+
         按参数分流到三种执行路径：
         1. team_name 存在 → _execute_as_teammate()
         2. isolation="worktree" → _execute_with_worktree()
@@ -291,7 +308,7 @@ class AgentTool(Tool):
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
             sandbox=PathSandbox(self._parent_agent.work_dir),
-            rule_engine=RuleEngine(),
+            rule_engine=getattr(self._parent_agent.permission_checker, "rule_engine", None) or RuleEngine(),
             mode=pm_enum,
         )
 
@@ -328,6 +345,16 @@ class AgentTool(Tool):
 
         agent_name = p.name or p.subagent_type or f"agent-{trace_node.agent_id}"
         is_fork = p.subagent_type is None
+        self._emit({
+            "type": "agent_created",
+            "agent_id": sub_agent.agent_id,
+            "parent_id": sub_agent.parent_id,
+            "trace_id": sub_agent.trace_id,
+            "agent_type": definition.agent_type,
+            "agent_name": agent_name,
+            "task": p.prompt,
+            "background": is_background,
+        })
 
         # 分支：后台启动 or 前台同步执行
         if is_background:
@@ -338,6 +365,9 @@ class AgentTool(Tool):
                 task="" if is_fork else p.prompt,
                 name=agent_name,
                 fork_conversation=conversation if is_fork else None,
+                event_callback=self._child_event_callback(
+                    sub_agent, definition.agent_type, agent_name
+                ),
             )
             if getattr(self._parent_agent, "coordinator_mode", False) and p.subagent_type in {
                 "PaperSearch", "PaperProtocol", "PaperStudy", "Verification"
@@ -356,13 +386,31 @@ class AgentTool(Tool):
         # 前台同步执行
         try:
             if is_fork:
-                result_text = await sub_agent.run_to_completion("", conversation)
+                result_text = await sub_agent.run_to_completion(
+                    "", conversation,
+                    event_callback=self._child_event_callback(
+                        sub_agent, definition.agent_type, agent_name
+                    ),
+                )
             else:
                 result_text = await sub_agent.run_to_completion(
-                    p.prompt, event_callback=self._event_callback
+                    p.prompt,
+                    event_callback=self._child_event_callback(
+                        sub_agent, definition.agent_type, agent_name
+                    ),
                 )
         except Exception as e:
             self._trace_manager.complete(trace_node.agent_id, "failed")
+            self._emit({
+                "type": "agent_status",
+                "agent_id": sub_agent.agent_id,
+                "parent_id": sub_agent.parent_id,
+                "trace_id": sub_agent.trace_id,
+                "agent_type": definition.agent_type,
+                "agent_name": agent_name,
+                "status": "failed",
+                "error": str(e),
+            })
             return ToolResult(
                 output=f"Sub-agent failed: {e}", is_error=True
             )
@@ -373,6 +421,17 @@ class AgentTool(Tool):
             output_tokens=sub_agent.total_output_tokens,
         )
         self._trace_manager.complete(trace_node.agent_id, "completed")
+        self._emit({
+            "type": "agent_status",
+            "agent_id": sub_agent.agent_id,
+            "parent_id": sub_agent.parent_id,
+            "trace_id": sub_agent.trace_id,
+            "agent_type": definition.agent_type,
+            "agent_name": agent_name,
+            "status": "completed",
+            "input_tokens": sub_agent.total_input_tokens,
+            "output_tokens": sub_agent.total_output_tokens,
+        })
 
         return ToolResult(output=result_text or "(sub-agent returned no output)")
 
@@ -468,6 +527,13 @@ class AgentTool(Tool):
             trace_id=self._parent_agent.trace_id or self._parent_agent.agent_id,
         )
         agent_id = trace_node.agent_id
+        self._emit({
+            "type": "agent_created", "agent_id": agent_id,
+            "parent_id": self._parent_agent.agent_id,
+            "trace_id": trace_node.trace_id, "agent_type": definition.agent_type,
+            "agent_name": teammate_name, "task": p.prompt, "background": True,
+            "team_name": p.team_name, "backend": backend.value,
+        })
 
         _has_full = getattr(self._parent_agent, '_full_registry', None) is not None
         full_registry = getattr(self._parent_agent, '_full_registry', None) or self._parent_agent.registry
@@ -497,7 +563,7 @@ class AgentTool(Tool):
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
             sandbox=PathSandbox(wt.path),
-            rule_engine=RuleEngine(),
+            rule_engine=getattr(self._parent_agent.permission_checker, "rule_engine", None) or RuleEngine(),
             mode=PermissionMode.DONT_ASK,
         )
 
@@ -544,6 +610,7 @@ class AgentTool(Tool):
             task="" if is_fork else p.prompt,
             name=teammate_name,
             fork_conversation=conversation if is_fork else None,
+            event_callback=self._child_event_callback(sub_agent, definition.agent_type, teammate_name),
         )
 
         return ToolResult(
@@ -701,10 +768,12 @@ class AgentTool(Tool):
             PERMISSION_MODE_MAP.get(pm_str, "DEFAULT"),
             PermissionMode.DEFAULT,
         )
+        if self._parent_agent.permission_mode == PermissionMode.DONT_ASK:
+            pm_enum = PermissionMode.DONT_ASK
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
             sandbox=PathSandbox(wt.path),
-            rule_engine=RuleEngine(),
+            rule_engine=getattr(self._parent_agent.permission_checker, "rule_engine", None) or RuleEngine(),
             mode=pm_enum,
         )
 
@@ -728,11 +797,28 @@ class AgentTool(Tool):
             trace_id=sub_agent.trace_id,
         )
         sub_agent.agent_id = trace_node.agent_id
+        agent_name = p.name or p.subagent_type or f"agent-{trace_node.agent_id}"
+        self._emit({
+            "type": "agent_created", "agent_id": sub_agent.agent_id,
+            "parent_id": sub_agent.parent_id, "trace_id": sub_agent.trace_id,
+            "agent_type": definition.agent_type, "agent_name": agent_name,
+            "task": task, "background": False, "isolation": "worktree",
+        })
 
         try:
-            result_text = await sub_agent.run_to_completion(task)
+            result_text = await sub_agent.run_to_completion(
+                task, event_callback=self._child_event_callback(
+                    sub_agent, definition.agent_type, agent_name
+                )
+            )
         except Exception as e:
             self._trace_manager.complete(trace_node.agent_id, "failed")
+            self._emit({
+                "type": "agent_status", "agent_id": sub_agent.agent_id,
+                "parent_id": sub_agent.parent_id, "trace_id": sub_agent.trace_id,
+                "agent_type": definition.agent_type, "agent_name": agent_name,
+                "status": "failed", "error": str(e),
+            })
             return ToolResult(
                 output=f"Sub-agent in worktree failed: {e}",
                 is_error=True,
@@ -744,6 +830,13 @@ class AgentTool(Tool):
             output_tokens=sub_agent.total_output_tokens,
         )
         self._trace_manager.complete(trace_node.agent_id, "completed")
+        self._emit({
+            "type": "agent_status", "agent_id": sub_agent.agent_id,
+            "parent_id": sub_agent.parent_id, "trace_id": sub_agent.trace_id,
+            "agent_type": definition.agent_type, "agent_name": agent_name,
+            "status": "completed", "input_tokens": sub_agent.total_input_tokens,
+            "output_tokens": sub_agent.total_output_tokens,
+        })
 
         cleanup = await self._worktree_manager.auto_cleanup(wt_name, wt.head_commit)
         if cleanup.kept:

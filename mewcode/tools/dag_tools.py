@@ -67,7 +67,7 @@ class DAGStatusParams(BaseModel):
 class DAGCreateTool(Tool):
     """
     DAG 创建工具 — 以 DAG 方式编排多个子 Agent。
-    
+
     特性:
     - 自动解析依赖关系
     - 无依赖节点并行执行
@@ -84,10 +84,21 @@ class DAGCreateTool(Tool):
     category = "command"
     is_concurrency_safe = False
 
-    def __init__(self, agent_tool: AgentTool, work_dir: str = ".") -> None:
+    def __init__(self, agent_tool: AgentTool, work_dir: str = ".", event_callback: Any = None) -> None:
         self._agent_tool = agent_tool
         self._work_dir = work_dir
+        self._event_callback = event_callback
         self._scheduler = DAGScheduler(store_dir=f"{work_dir}/.mewcode/dag-runs")
+
+    def _emit(self, payload: dict[str, Any]) -> None:
+        if self._event_callback is not None:
+            event = dict(payload)
+            parent = getattr(self._agent_tool, "_parent_agent", None)
+            if parent is not None:
+                event.setdefault("agent_id", getattr(parent, "agent_id", "main"))
+                event.setdefault("parent_id", getattr(parent, "parent_id", None))
+                event.setdefault("trace_id", getattr(parent, "trace_id", None))
+            self._event_callback(event)
 
     @property
     def scheduler(self) -> DAGScheduler:
@@ -118,9 +129,18 @@ class DAGCreateTool(Tool):
             run = self._scheduler.create(nodes)
         except ValueError as exc:
             return ToolResult(output=f"Invalid DAG: {exc}", is_error=True)
+        self._emit({
+            "type": "dag_created", "dag_id": run.id, "dag_name": p.name,
+            "nodes": [node.to_dict() for node in nodes],
+        })
 
         # 2. 定义节点执行函数
         async def execute_node(node: DAGNode, dependency_outputs: dict[str, str]) -> str:
+            self._emit({
+                "type": "dag_node_status", "dag_id": run.id, "node_id": node.id,
+                "status": "running", "dependencies": node.dependencies,
+                "agent_type": node.agent_type, "task": node.task,
+            })
             nonlocal protocol_hash
             self._validate_dependency_evidence(node, dependency_outputs)
             # 将依赖的输出作为上下文注入
@@ -175,6 +195,10 @@ class DAGCreateTool(Tool):
                     raise RuntimeError(audit.render())
                 if audit.checked:
                     result.output = result.output.rstrip() + "\n\n" + audit.render()
+            self._emit({
+                "type": "dag_node_status", "dag_id": run.id, "node_id": node.id,
+                "status": "completed", "agent_type": node.agent_type,
+            })
             return result.output
 
         # 3. 执行 DAG
@@ -184,6 +208,11 @@ class DAGCreateTool(Tool):
             max_parallel=p.max_parallel,
             fail_fast=p.fail_fast,
         )
+        self._emit({
+            "type": "dag_status", "dag_id": completed.id,
+            "status": completed.status.value,
+            "nodes": [node.to_dict() for node in completed.nodes.values()],
+        })
         # 4. 构建结果输出
         lines = [
             f"DAG '{p.name}' completed with status: {completed.status.value}",

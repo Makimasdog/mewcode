@@ -1,0 +1,44 @@
+{
+  "verdict": "PASS",
+  "dag_run_id": "fe8432f22288",
+  "model": "qwen3.7-flash-2026-07-15",
+  "source": {
+    "url": "https://www.cs.cmu.edu/~bhiksha/courses/mlsp.fall2010/class14/macqueen.pdf",
+    "final_url": "https://www.cs.cmu.edu/~bhiksha/courses/mlsp.fall2010/class14/macqueen.pdf",
+    "http_status": 200,
+    "pdf_pages": 17,
+    "sha256": "55dc4458c47e13ccfb0f8afbc57862b3edd8432905bf391e61e75859c41aa1c0",
+    "retrieved_at": "2026-10-03T15:14:53.927655+00:00"
+  },
+  "protocol_sha256": "7d187412704fb76a6c64c88169c6bc2c36ec34c49cd6d6dc95ab6324645ef07c",
+  "input_hashes": {
+    "paper.pdf": "55dc4458c47e13ccfb0f8afbc57862b3edd8432905bf391e61e75859c41aa1c0",
+    "paper.txt": "133758862ece473326b8019d1db44d137c5d30294e5763e907dcb139729f7c5c",
+    "source.json": "aa6c3eb668715015687c35d4ebcf0c5ef9d78e1ca10d670a64d03294449e97b0",
+    "source_evidence.txt": "3ea3b433094d5b63f4b336595928dbb9612589f3fc5204cc6dc20d4012de6fd5",
+    "data.json": "06f6ce78f3c064c8303f3923f5996d417de5d26b6ad931119281c8999e5a3db0",
+    "contract.md": "167287153d7c8c9935e88c1ff955e388c9847e5ee118553a4d1bfabf899a3e70"
+  },
+  "reused_stages": [
+    "PaperSearch",
+    "PaperProtocol",
+    "PaperStudy"
+  ],
+  "resumed": true,
+  "verification_mode": "deterministic subprocess + independent reference",
+  "metrics": {
+    "verdict": "PASS",
+    "experiments": 20,
+    "algorithm_fixtures": 7,
+    "data_rows": 150,
+    "k": 12,
+    "seed": 42,
+    "original_wcss": 17375.2435207137,
+    "first_scramble_ratio": 1.0921712820444387,
+    "mean_scramble_ratio": 1.1708871294807808,
+    "permutation_p": 0.2,
+    "paper_reported_ratio": 1.6,
+    "scope": "Method and synthetic experiment reproduction; original sample/seed unavailable."
+  },
+  "checker_sha256": "a7d74d8b21b7034d7ca014ba9d3e5a446512454a64e0194746331c2774f6af49"
+}

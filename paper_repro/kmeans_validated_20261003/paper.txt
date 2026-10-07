@@ -1,0 +1,730 @@
+[PDF PAGE 1]
+SOMEMETHODSFOR
+CLASSIFICATIONAND ANALYSIS
+OF MULTIVARIATEOBSERVATIONS
+J.MACQUEEN
+UNIVERSITYOFCALIFORNIA,LosANGELES
+1.Introduction
+Themainpurposeofthispaperistodescribeaprocessforpartitioningan
+N-dimensionalpopulationintoksetsonthebasisofasample.Theprocess,
+whichiscalled'k-means,'appearstogivepartitionswhicharereasonably
+efficientinthesenseofwithin-classvariance.Thatis,ifpistheprobabilitymass
+functionforthepopulation,S= {S1,S2,- **,Sk}isapartitionofEN,andui,
+i= 1,2,*- ,k,istheconditionalmeanofpoverthesetSi,thenW2(S)=
+ff=ISif z- u42dp(z)tendstobelowforthepartitionsSgeneratedbythe
+method.Wesay'tendstobelow,'primarilybecauseofintuitiveconsiderations,
+corroboratedtosomeextentbymathematicalanalysisandpracticalcomputa-
+tionalexperience.Also,thek-meansprocedureiseasilyprogrammedandis
+computationallyeconomical,sothatitisfeasibletoprocessverylargesamples
+onadigitalcomputer.Possibleapplicationsincludemethodsforsimilarity
+grouping,nonlinearprediction,approximatingmultivariatedistributions,and
+nonparametrictestsforindependenceamongseveralvariables.
+Inadditiontosuggestingpracticalclassificationmethods,thestudyofk-means
+hasprovedtobetheoreticallyinteresting.Thek-meansconceptrepresentsa
+generalizationoftheordinarysamplemean,andoneisnaturallyledtostudythe
+pertinentasymptoticbehavior,theobjectbeingtoestablishsomesortoflawof
+largenumbersforthek-means.Thisproblemissufficientlyinteresting,infact,
+forustodevoteagoodportionofthispapertoit.Thek-meansaredefinedin
+section2.1,andthemainresultswhichhavebeenobtainedontheasymptotic
+behavioraregiventhere.Therestofsection2isdevotedtotheproofsofthese
+results.Section3describesseveralspecificpossibleapplications,andreports
+somepreliminaryresultsfromcomputerexperimentsconductedtoexplorethe
+possibilitiesinherentinthek-meansidea.Theextensiontogeneralmetricspaces
+isindicatedbrieflyinsection4.
+Theoriginalpointofdeparturefortheworkdescribedherewasaseriesof
+problemsinoptimalclassification(MacQueen[9])whichrepresentedspecial
+ThisworkwassupportedbytheWesternManagementScienceInstituteunderagrantfrom
+theFordFoundation,andbytheOfficeofNavalResearchunderContractNo.233(75),Task
+No.047-041.
+281
+
+[PDF PAGE 2]
+282 FIFTHBERKELEY SYMPOSIUM:MAC QIEEN
+casesoftheproblemofoptimalinformationstructuresasformulatedby
+Marschak[11],[12].(Foraninterestingtreatmentofacloselyrelatedproblem,
+seeBlackwell[1].)Inoneinstancetheproblemoffindingoptimalinformation
+structuresreducestofindingapartitionS= {Sl,S2,***,Sk}ofENwhichwill
+minimizeW2(S)asdefinedabove.Inthisspecialmodel,individualA observesa
+randompointzEEN,whichhasaknowndistributionp,andcommunicatesto
+individualBwhathehasseenbytransmittingoneofkmessages.IndividualB
+interpretsthemessagebyactingasiftheobservedpointzisequaltoacertain
+point£tobechosenaccordingtothemessagereceived.Thereisalosspropor-
+tionaltothesquarederrorIz-g12resultingfromthischoice.Theobjectisto
+minimizeexpectedloss.TheexpectedlossbecomesW2(S),wherethei-thmessage
+istransmittedifzESi,sincethebestwayforBtointerprettheinformationis
+tochoosetheconditionalmeanofponthesetassociatedwiththemessage
+received.Themean,ofcourse,minimizesthesquarederror.Thustheproblem
+istolocateapartitionminimizingw2(S).Thisproblemwasalsostudiedby
+Fisher[5],whogivesreferencestoearlierrelatedworks.
+Thek-meansprocesswasoriginallydevisedinanattempttofindafeasible
+methodofcomputingsuchanoptimalpartition.Ingeneral,thek-meanspro-
+cedurewillnotconvergetoanoptimalpartition,althoughtherearespecialcases
+whereitwill.Examplesofbothsituationsaregiveninsection2.3.Sofarasthe
+authorknows,thereisnofeasible,generalmethodwhichalwaysyieldsanoptimal
+partition.Cox[2]hassolvedtheproblemexplicitlyforthenormaldistribution
+inonedimension,withk= 2,3,- -*,6,andacomputationalmethodforfinite
+samplesinonedimensionhasbeenproposedbyFisher[5].A closelyrelated
+methodforobtainingreasonablyefficient'similaritygroups'hasbeendescribed
+byWard[15].Also,asimpleandelegantmethodwhichwouldappeartoyield
+partitionswithlowwithin-classvariance,wasnoticedbyEdwardForgy[7]and
+RobertJennrich,independentlyofoneanother,andcommunicatedtothewriter
+sometimein1963.Thisproceduredoesnotappeartobeknowntoworkersin
+taxonomyandgrouping,andisthereforedescribedinsection3.Forathorough
+considerationofthebiologicaltaxonomyproblemandadiscussionofavariety
+ofrelatedclassificationmethods,thereaderisreferredtotheinterestingbook
+bySokalandSneath[14].(SeeNoteaddedinproofofthispaper.)
+Sebestyen[13]hasdescribedaprocedurecalled"adaptivesamplesetcon-
+struction,"whichinvolvestheuseofwhatamountstothek-meansprocess.
+Thisistheearliestexplicituseoftheprocesswithwhichtheauthorisfamiliar.
+AlthougharrivedatinignoranceofSebestyen'swork,thesuggestionswemake
+insections3.1,3.2,and3.3,areanticipatedinSebestyen'smonograph.
+2.K-means;asymptoticbehavior
+2.1.Preliminaries.Letzi,Z2,- - - bearandomsequenceofpoints(vectors)in
+EN,eachpointbeingselectedindependentlyoftheprecedingonesusingafixed
+probabilitymeasurep.ThusP[zie A]= p(A)andP[zn+leAIzi,Z2,*- ,Zn]=
+
+[PDF PAGE 3]
+MULTIVARIATE OBSERVATIONS 283
+p(A),n= 1,2,*--,forA anymeasurablesetinEN.Relativetoagiven
+k-tupleX = (X1,X2,* ,Xk),xiEEN,i= 1,2,***,k,wedefineaminimum
+distancepartitionS(x)= {SI(X),S2(X),* ,Sk(X)}ofEN,by
+(2.1)SI(x)= TI(x),S2(x)= T2(x)S1(x),*-,
+Sk(X)= Tk(X)S(X)S2(X)*.*.*Sk-l(X),
+where
+(2.2)Ti(x)={E:EEN,I|-xil< 1-xjl,j= 1,2, ,k}.
+ThesetSi(x)containsthepointsinENnearesttoxi,withtiedpointsbeingas-
+signedarbitrarilytothesetoflowerindex.Notethatwiththisconventioncon-
+cerningtiedpoints,ifxi=xjandi<jthenSj(x)= 0.Samplek-means
+= 2 k** xx),eEEN,i= 1,* ,k,withassociatedintegerweights
+l"2 k**W8)arenowdefinedasfollows:x1=Zi, = 1,i= 1,2, ,k,and
+forn = 1,2, * ,ifZk+ne Stxi = (Wt4t+ Zn+k)/(Wl+ 1),Wt+l - Wt + 1,
+andxj"+'=x4n,wi+1=winforj$i,whereSn= {Sn,Sn,**Sk}isthemini-
+mumdistancepartitionrelativetox".
+Statedinformally,thek-meansprocedureconsistsofsimplystartingwithk
+groupseachofwhichconsistsofasinglerandompoint,andthereafteradding
+eachnewpointtothegroupwhosemeanthenewpointisnearest.Afterapoint
+isaddedtoagroup,themeanofthatgroupisadjustedinordertotakeaccountof
+thenewpoint.Thusateachstagethek-meansare,infact,themeansofthegroups
+theyrepresent(hencethetermk-means).
+Instudyingtheasymptoticbehaviorofthek-means,wemaketheconvenient
+assumptions,(i)pisabsolutelycontinuouswithrespecttoLebesguemeasure
+onEN,and(ii)p(R)= 1foraclosedandboundedconvexsetRC EN,and
+p(A)> 0foreveryopensetA C R.Foragivenk-tuplex= (xl,x2, ,k)-
+suchanentitybeingreferredtohereafterasak-point-let
+k
+W(X)=iijsIZ- Xi2dp(z),
+(2.3)k V(X)=i. Iz|-ui(x)12dp(z),
+whereS= {S1,S2,* ,Sk}istheminimumdistancepartitionrelativetox,and
+ui(x)= sizdp(z)/p(Si)orui(x)=xi,accordingtowhetherp(Si)> 0 or
+p(Si)= 0.Ifxi= ui(x),i= 1,2,* ,kwesaythek-pointxisunbiased.
+Theprincipalresultisasfollows.
+THEOREM1.ThesequenceofrandomvariablesW(xl),W(x2),*--converges
+a.s.andW.=lim",.W(xn)isa.s.equaltoV(x)forsomexintheclassofk-points
+X = (XlX222,* ,Xk)whichareunbiased,andhavethepropertythatxi#xjifi$j.
+Inlieuofasatisfactorystronglawoflargenumbersfork-means,weobtainthe
+followingtheorem.
+THEOREM2.LetUn'= U,(Xn)andpn= p(S,(xn));then
+(2.4) E ( Eptixt-u )/m-O as m->oo.n=l i=l II a.s.
+
+[PDF PAGE 4]
+284 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+2.2.Proofs.Thesystemofk-pointsformsacompletemetricspaceifthedis-
+tancep(x,y)betweenthek-pointsx= (xl,x2,***,Xk)andy= (YI,Y2,***,yk)'
+isdefinedbyp(x,y)= Sk-1xi-yil.WedesignatethisspacebyM andinter-
+pretcontinuity,limits,convergence,neighborhoods,andsoon,intheusualway
+withrespecttothemetrictopologyofM.Ofcourse,everyboundedsequenceof
+k-pointscontainsaconvergentsubsequence.
+Certaindifficultiesencounteredintheproofoftheorem1arecausedbythe
+possibilityofthelimitofaconvergentsequenceofk-pointshavingsomeofits
+constituentpointsequaltoeachother.Withtheendinviewofcircumventing
+thesedifficulties,supposethatforagivenk-pointx = (X1,X2,*- *,Xk),xieR,
+i= 1,2,**,k,wehavexi= xjforacertainpairi,j,i<j,andxi= xi5=xm
+form5$i,j.Thepointsxiandxjbeingdistinctinthisway,andconsidering
+assumption(ii),wenecessarilyhavep(Si(x))> 0,forSi(x)certainlycontains
+anopensubsetofR.Theconventionconcerningtiedpointsmeansp(Sj(x))= 0.
+Nowif{yn}= {(yl,y2,* ,yk)}isa sequenceofk-pointssatisfyingy'eR,
+andyi$ YJifi$j,n=1,2,* ,andthesequenceynapproachedx,theny?
+andyjapproachxi=x;,andhenceeachother;theyalsoapproachtheboundaries
+ofS,(yn)andSj(yn)inthevicinityofxi.Theconditionalmeansu1(yn)anduj(yn),
+however,mustremainintheinteriorofthesetsS,(yn)andSj(yn)respectively,
+andthustendtobecomeseparatedfromthecorrespondingpointsy'andyJ.In
+fact,foreachsufficientlylargen,thedistanceofU,(yn)fromtheboundaryof
+Si(yn)orthedistanceofu,(yn)fromtheboundaryofSj(yn),willexceedacertain
+positivenumber.Forasntendstoinfinity,p(Si(yn))+p(Sj(yn))willapproach
+p(Si(x))>0-asimplecontinuityargumentbasedontheabsolutecontinuity
+ofpwillestablishthis-andforeachsufficientlylargen,atleastoneoftheproba-
+bilitiesp(S1(yn))orp(Sj(yn))willbepositivebyadefiniteamount,say6.Butin
+viewoftheboundednessofR,aconvexsetofpmeasureatleasta>0cannot
+haveitsconditionalmeanarbitrarilynearitsboundary.Thislineofreasoning,
+whichextendsimmediatelytothecasewheresomethreeormoremembersof
+(xI,x2,***,Xk)areequal,givesusthefollowinglemma.
+LEMMA1.Letx = (X1,X2,* ,Xk)bethelimitofaconvergentsequenceof
+k-points{yl}= {(yi,Y2,*.**,yk)}satisfyingy?ER,y'F6yjifi$j,n= 1,2,
+Ifxi= xjforsomei$j,thenliminfn1tp(Si(yn))|yt-Uj(yn)> 0.
+Hence,iflimn~g , p(Si(y"))Iyk-u,(y8)=0,eachmemberofthek-tuple
+(X1,X2,- - *Xk)isdistinctfromtheothers.
+Weremarkthatifeachmemberofthek-tuplex= (xI,x2,* ,Xk)isdistinct
+fromtheothers,then7r(y)= (p(SI(y)),p(S2(y)),*-,p(Sk(y))),regardedasa
+mappingofM ontoEk,iscontinuousatx-thisfollowsdirectlyfromtheabsolute
+continuityofp.Similarly,u(y)= (u1(y),u2(y),***,uk(y))regardedasamap-
+pingfromM ontoM iscontinuousatx-becauseoftheabsolutecontinuityofp
+andtheboundnessofR (finitenessoffzdp(z)woulddo).Puttingthisremark
+togetherwithlemma1,wegetlemma2.
+LEMMA2.Letx = (X1,X2,...*,Xk)bethelimitofaconvergentsequenceof
+k-points{yn}= {(yl,y2,- *,yk)}satisfyingytcR,y?$y7ifi$j,n = 1,2,
+
+[PDF PAGE 5]
+MULTIVARIATEOBSERVATIONS 285
+*--.Ifimn t=l p(S(y))y- Ui(yn)I= 0,then,t=l p(Si(x))xi-tul(xn)[
+=0andeachpointxiinthek-tuple(X1,X2,* ,Xk)isdistinctfromtheothers.
+Lemmas1and2aboveareprimarilytechnicalinnature.Theheartofthe
+proofsoftheorems1and2isthefollowingapplicationofmartingaletheory.
+LEMMA3.Lett1,t2,* ,andti,t2y...,begivensequencesofrandomvariables,
+andforeachn= 1,2, ,lett,nandtnbemeasurablewithrespecttoj.where
+#1C/2C ...isamonotoneincreasingsequenceofa-fields(belongingtotheunder-
+lyingprobabilityspace).Supposeeachofthefollowingconditionsholdsa.s.:
+(i)Itni< K < oo,(ii)n> 0, n < -,(iii)E(tn+1113n)< tn+ t..Thenthese-
+quencesofrandomvariablest1,t2, andso,s1,2,-- , whereso= 0 and
+Sn= Et=1(ti-E(t+±i!10),n= 1,2, ,bothconvergea.s.
+PROOF.Letyn= tn+ sn_-sothattheynformamartingalesequence.Letc
+beapositivenumberandconsiderthesequence{f9}obtainedbystoppingyn
+(seeDoob[3],p.300)atthefirstn forwhichyn< -c.From(iii)we
+seethatyn> - = i- K,andsinceyn- Yn-1> 2K,we haveyn>
+max(-Ft'=l- K,-(c+ 2K)).Thesequence{y}isamartingale,sothat
+Eyn= E91,n= 1,2,* ,andbeingboundedfrombelowwithElgil. K,cer-
+tainlysupnEI9nI<oo.Themartingaletheorem([3],p.319)shows9nconverges
+a.s.ButYn= ynonthesetAcwhere i>-c-K, i= 1,2,***,and
+(ii)impliesP[A,]-+1asc-oo .Thus{yn}convergea.s.ThismeansSn=yn+1
+-tn+iisa.s.bounded.Using(iii)wecanwrite-Sn= Et=l{ A
+whereAi20.ButsinceSnandEl{iarea.s.bounded,E,Aiconvergesa.s.,Sn
+convergesa.s.,andfinally,sodoestn.Thiscompletestheproof.
+Turningnowtotheproofoftheorem1,let(Onstandforthesequencez1,Z2,***
+Zn-l+k,andletAlbetheevent[Zn+keSn].SinceSn+1istheminimumdistance
+partitionrelativetoxn+±,wehave
+(2.5)E[W(Xn+l)Ilwn]= E [f, XZ|-x+,I2dp(Z)Icon]
+S<E[ik f z-xn+y2dp(z)lW1n]
+k -k 1=E -Xn+112dp(z)IAnX P
+j=1E Ji Z=Wj i
+IfZn+kE87,x' =xiforiFdj.Thusweobtain
+(2.6) E[W(Xn+l),.n]< W(xn)- E (f XZ-n42dp(z))p2
++ E E[f|sIz-4+112dp(z)#A7,iWn]pj.
+SeveralapplicationsoftherelationfAIz-X12dp(z)=fAIz-U12dp(z)+
+p(A)lx-u12,whereJA(u- z)dp(z)= 0,enablesustowritethelasttermin
+(2.6)as
+
+[PDF PAGE 6]
+286 FIFTH BERKELEY SYMPOSIUM:MAC QUEEN
+k
+(2.7) W[f~,,~Iz- x1j2dp(z)pi-(pi)2xJ-U[26=1 Si
++ (p7)2|XJ- u712(Wj/(Wn+ 1))2+fsIZ-Uj12dp(z)pj/(wj+ 1)21.
+Combiningthiswith(2.6),weget
+k
+(2.8)E(W(xn+l)IWn]< W(xn)- E 4X-uYl2(p7)2(2wj+ l)/(wj+ 1)2j=1
+k
++ 7 2*,j(pjn)2/(Wn+1)2,6=1
+whereanj=fS,IZ-U712dp(z)/pj7.Sinceweareassumingp(R)= 1,certainlyW(xn)isa.s.bounded,asisn,j.
+Wenowshowthat
+(2.9) E (pfn)2/(w7"+1)2n
+convergesa.s.foreachj= 1,2,***,k,therebyshowingthat
+(2.10) E [oj(p7)2/(wn+1)2])n j=1
+convergesa.s.Thenlemma3 canbeappliedwithtn=W(xn)and,n=
+Ek12f,j(p7)2/(W7+1)2.Itsufficestoconsidertheconvergenceof
+(2.11) E (pj)2/[Q3+ 1+Wn)(3+ 1+ W+1)]n>2
+withA> 0,sincethisimpliesconvergenceof(2.9).Also,thisisconvenient,for
+E(I,lWn)= pjwhereI7isthecharacteristicfunctionoftheevent[zn+kE87],
+andonnotingthatwj-+ 1+ ,t=1j,anapplicationoftheorem1in[4],
+p.274,saysthatforanypositivenumbersaandj3,
+(2.12)P d+ 1+wj+1> 1+ ,pj-aa,vjfforalln= 1,2,**I_L=l i=l-
+> 1-(1 + a/3)',
+wherevt= pJ- (p5)2istheconditionalvarianceofItgivenci.We takea = 1,
+andthuswithprobabilityatleast1- (1+ f)-Itheseries(2.11)isdominatedby
+(2.13) E (p")2/[(1+ (pj)2)2+ E (pf)2]
+(2.13) n>2 IL\+
+= E 4[J&+ E (pf))12 (1 + n (P)2)]'n>2L/-
+whichclearlyconverges.
+Thechoiceof3beingarbitrary,wehaveshownthat(2.9)convergesa.s.
+Applicationoflemma3asindicatedaboveprovesW(xn)convergesa.s.
+ToidentifythelimitW.O,notethatwithtnand,ntakenasabove,lemma3
+
+[PDF PAGE 7]
+MULTIVARIATEOBSERVATIONS 287
+entailsa.s.convergenceofEn[W(xn)-E[W(xn+')ico.]],andhence(2.8)implies
+a.s.convergenceof
+(2.14) E (EXn- u.j2(pn)2(2W7+l)/(w7+ 1)2)
+Since(2.14)dominates,n Plp7Xn-uj)/kn,thelatterconvergesa.s.,
+andalittleconsiderationmakesitclearthat
+k k
+(2.15) E pnlXn- ujll= E p(Sj(xn))IXJ- uj(xn)lj=1 j=1
+convergestozeroonasubsequence{xn}andthatthissubsequencehasitselfa
+convergentsubsequence,say{xn'}.Letx= (x,,x2,...,)Xk)=limt,.xnv.Since
+W(X)= V(X)+ Ek=,p(Sj(X))IXj-U(X)2andinparticular,
+(2.16) W(x,)= V(xn)+ E p(Sj(xn))Jxjn- u(xj7)12,j=1
+wehaveonlytoshow
+(a)limt,.W(xn')= WO,= W(x),and
+(b)limn+0Y,=,Ip(Sj(xnt))lX7'- u(x,)12= 0= Fl=Ip(Sj(x))xj- uj(x)I2.
+ThenW(x)= V(x)andxisa.s.unbiased.(Obviously,_t=1pilail= 0ifand
+onlyifY_it=,pi4aij2= 0,wherepi> 0.)
+We showthat(a)istruebyestablishingthecontinuityofW(x).We have
+k
+(2.17) W(x)< E ]Z(z- XjI2dp(z)
+k k
+-E Si( z-yJ2± E [p(Sj(y))IXjyj-2
+ j=1 ~~~j=1
++2lxj-yjlLs(y)!z-xjldp(z)],
+withthelastinequalityfollowingeasilyfromthetriangleinequality.Thus
+W(x)< W(y)+ o(p(x,y)),andsimilarly,W(y)< W(x)+ o(p(x,y)).
+Toestablish(b),lemma2canbeappliedwith{yn}and{x-}identified,for
+a.s.xi'$4Xj'fori5-j,n= 1,2,*--.Itremainstoremarkthatlemma2also
+impliesa.s.xi#dxjfori$-j.Theproofoftheorem1iscomplete.
+Theorem2followsfromthea.s.convergenceof57n(Ft=1p Xtn- ui)/nk
+uponapplyinganelementaryresult(c.f.Halmos[8],theoremC,p.203),which
+saysthatifEan/nconverges,_i.1ai/n-- 0.
+2.3.Remarks.Inanumberofcasescoveredbytheorem1,alltheunbiased
+k-pointshavethesamevalueofW. Inthissituation,theorem1implies
+Ek=1p1 i Utconvergesa.s.tozero.Anexampleisprovidedbytheuniform
+distributionoveradiskinE2.Ifk= 2,theunbiasedk-point(xl,x2)withxi$dx2
+consistofthefamilyofpointsxiandx2oppositeoneanotheronadiameter,and
+atacertainfixeddistancefromthecenterofthedisk.(Thereisoneunbiased
+k-pointwithxi= x2,bothxlandx2beingatthecenterofthediskinthiscase.)
+
+[PDF PAGE 8]
+288 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+Thek-meansthusconvergetosomesuchrelativeposition,buttheorem1does
+notquitepermitustoeliminatetheinterestingpossibilitythatthetwomeans
+oscillateslowlybutindefinitelyaroundthecenter.
+Theorem1providesfora.s.convergenceofEF=1pilxi-uiltozeroina
+slightlybroaderclassofsituations.Thisiswheretheunbiasedk-pointsx=
+(xI,X2,***,Xk)withxi$xifori#=j,areallstableinthesensethatforeach
+suchx,W(y)2W(x)(andhenceV(y)> V(x))forallyinaneighborhoodofx.
+Inthiscase,eachsuchxfallsinoneoffinitelymanyequivalenceclassessuch
+thatW isconstantoneachclass.Thisisillustratedbytheaboveexample,where
+thereisonlyasingleequivalenceclass.Ifeachoftheequivalenceclassescontains
+onlyasinglepoint,theorem1impliesa.s.convergenceofxntooneofthosepoints.
+Thereareunbiasedk-pointswhicharenotstable.TakeadistributiononE2
+whichhassharppeaksofprobabilityateachcornerofasquare,andissymmetric
+aboutbothdiagonals.Withk= 2,thetwoconstituentpointscanbysym-
+metricallylocatedonadiagonalsothattheboundaryoftheassociatedminimum
+distancepartitioncoincideswiththeotherdiagonal.Withsomeadjustment,such
+ak-pointcanbemadetobeunbiased,andiftheprobabilityissufficientlycon-
+centratedatthecornersofthesquare,anysmallmovementofthetwopointsoff
+thediagonalinoppositedirections,resultsinadecreaseinW(x).Itseemslikely
+thatthek-meanscannotconvergetosuchaconfiguration.
+Foranexamplewherethek-meansconvergewithpositiveprobabilitytoa
+pointxforwhichV(x)isnotaminimum,takeequalprobabilitiesatthecorner
+pointsofarectanglewhichisjustslightlylongerononesidethantheother.
+Numberwith1thecornerpoints,and2attheendpointsofoneoftheshort
+edges,and3and4,attheendpointsoftheothershortedge,with1opposite3
+onthelongedge.Takek= 2.Ifthefirstfourpointsfallatthecornerpoints
+1,2,3,4inthatorder,thetwomeansatthisstagearedirectlyoppositeone
+anotheratthemiddleofthelongedges.Newpointsfallingat1and3willalways
+benearerthefirstmean,andpointsfallingat2and4willalwaysbenearerthe
+secondmean,unlessoneofthemeanshasanexcursiontoonearoneofthecorner
+points.Bythestronglawoflargenumbersthereispositiveprobabilitythiswill
+nothappen,andhencewithpositiveprobabilitythetwomeanswillconvergeto
+themidpointsofthelongedges.Thecorrespondingpartitionclearlydoesnot
+haveminimumwithin-classvariance.
+3.Applications
+3.1.Similaritygrouping:coarseningandrefining.Perhapsthemostobvious
+applicationofthek-meansprocessistotheproblemof"similaritygrouping"or
+"clustering."Thepointofviewtakeninthisapplicationisnottofindsome
+unique,definitivegrouping,butrathertosimplyaidtheinvestigatorinobtaining
+qualitativeandquantitativeunderstandingoflargeamountsofN-dimensional
+databyprovidinghimwithreasonablygoodsimilaritygroups.Themethod
+shouldbeusedincloseinteractionwiththeoryandintuition.Consequently,the
+
+[PDF PAGE 9]
+MULTIVARIATE OBSERVATIONS 289
+computerprogramactuallypreparedforthispurposeinvolvedseveralmodifi-
+cationsofthek-meansprocess,modificationswhichappeartobehelpfulinthis
+sense.
+First,theprograminvolvestwoparameters:Cfor'coarsening,'andR for
+'refinement.'Theprogramstartswithauserspecifiedvalueofk,andtakesthe
+firstkpointsinthesampleasinitialmeans.Thek-meansprocessisstarted,each
+subsequentsamplepointbeingassignedtothenearestmean,thenewmean
+computed,andsoon,exceptthataftereachnewpointisadded,andforthe
+initialmeansaswell,theprogramdeterminesthepairofmeanswhichare
+nearesttoeachotheramongallpairs.Ifthedistancebetweenthemembersof
+thispairislessthanC,theyareaveragedtogether,usingtheirrespectiveweights,
+toformasinglemean.Thenearestpairisagaindetermined,theirseparation
+comparedwithC,andsoon,untilallthemeansareseparatedbyanamountof
+Cormore.Thuskisreducedandthepartitiondefinedbythemeansiscoarsened.
+Inaddition,aseachnewpointisprocessedanditsdistancefromthenearestof
+thecurrentmeansdetermined,thisdistanceiscomparedwithR.Ifthenew
+pointisfoundtobefurtherthanRffromthenearestmean,itisleftby
+itselfastheseedpointforanewmean.Thuskisincreasedandthepartitionis
+refined.OrdinarilywetakeC < R.Aftertheentiresampleisprocessedinthis
+way,theprogramgoesbackandreclassifiesallthepointsonthebasisofnearness
+tothefinalmeans.Thepointsthusassociatedwitheachmeanconstitutesthe
+finalgrouping.Theprogramprintsoutthepointsineachgroupalongwithas
+manyas18charactersofidentifyinginformationwhichmaybesuppliedwith
+eachpoint.Thedistanceofeachpointfromitsnearestmean,thedistances
+betweenthemeans,theaverageforeachgroup,ofthesquareddistanceofthe
+pointsineachgroupfromtheirrespectivedefiningmeans,andthegrandaverage
+ofthesequantitiesovergroups,areallprintedout.Thelatterquantity,whichis
+notquitethewithin-groupvariance,iscalledthewithin-classvariationforpur-
+posesofthediscussionbelow.Ifrequested,theprogramdeterminesfrequencies
+ofoccurrencewithineachgroupofthevaluesofdiscretevariablesassociated
+witheachpoint.Uptotwelvevariables,withtenvaluesforeachvariable,can
+besupplied.Thismakesitconvenienttodeterminewhetherornotthegroups
+finallyobtainedarerelatedtootherattributesofinterest.(Copiesofthis
+experimentalprogramareavailablefromtheauthoronrequest.)
+Theprogramhasbeenappliedwithsomesuccesstoseveralsamplesofreal
+data,includingasampleoffivedimensionalobservationsonthestudents'
+environmentin70U.S.colleges,a sampleoftwentysemanticdifferential
+measurementsoneachof360commonwords,asampleoffifteendimensional
+observationson760documents,andasampleoffifteenphysiologicalobservations
+oneachof560humansubjects.Whileanalysisofthisdataisstillcontinuing,
+andwillbereportedindetailelsewhere,themeaningfulnessofthegroupsob-
+tainedissuggestedbytheirobviouspertinencetootheridentifiableproperties
+oftheobjectsclassified.Thiswasapparentoninspection.Forexample,one
+groupofcollegescontainedReed,Swarthmore,Antioch,Oberlin,andBryn
+
+[PDF PAGE 10]
+290 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+Mawr.AnothergroupcontainedtheUniversitiesofMichigan,Minnesota,
+Arkansas,andIllinois,Cornell,GeorgiaTech,andPurdue.Selectingatrandom
+ahalf-dozenwordsfromseveralgroupsobtainedfromthesemanticdifferential
+data,wefindinonegroupthewordscalm,dusky,lake,peace,sleep,andwhite;
+inanothergroupthewordsbeggar,deformed,frigid,lagging,low;andinanother
+groupthewordsstatue,sunlight,time,trees,truthful,wise.
+Whenthesamplepointsarerearrangedinanewrandomorder,thereissome
+variationinthegroupingwhichisobtained.However,thishasnotappearedto
+beaseriousconcern.Infact,whentherearewellseparatedclusters,asde-
+terminedbyinspectionofthebetween-meandistancesinrelationtothewithin-
+classvariation,repeatedrunsgivevirtuallyidenticalgroupings.Minorshiftsare
+duetotheunavoidabledifficultythatsomepointsarelocatedbetweenclusters.
+Adegreeofstabilitywithrespecttotherandomorderinwhichthepointsare
+processedisalsoindicatedbyatendencyforthewithin-classvariationtobe
+similarinrepeatedruns.Thuswhenasampleof250pointsinfivedimensions
+withk= 18,wasrunthreetimes,eachtimewiththepointsinadifferentrandom
+order,thewithin-classvariation(seeabove)changedoverthethreerunsbyat
+most7%.A certainamountofstabilityistobeexpectedsimplybecausethe
+within-classvariationisthemeanofkdependentrandomvariableshavingthe
+propertythatwhenonegoesuptheothersgenerallygodown.Wecanreasonably
+expectthewithin-classstabilitytogenerallyincreasewithkandthesamplesize.
+Actually,itwillusuallybedesirabletomakeseveralruns,withdifferentvalues
+ofCandR,andpossiblyadding,deleting,orrescalingvariables,andsoon,in
+anefforttounderstandthebasicstructureofthedata.Thusanyinstabilitiesdue
+torandomorderingofthesamplewillbequicklynoted.Beingabletomake
+numerousclassificationscheaplyandtherebylookatthedatafromavarietyof
+differentperspectivesisanimportantadvantage.
+Anothergeneralfeatureofthek-meansprocedurewhichistobeexpectedon
+intuitivegrounds,andhasbeennotedinpractice,isatendencyforthemeansand
+theassociatedpartitiontoavoidhavingtheextremeofonlyoneortwopointsin
+aset.Infact,thereisanappreciabletendencyforthefrequencytobeevenly
+splitovergroups.Ifthereareafewrelativelylargegroups,thesetendtohave
+relativelylowwithin-classvariation,aswouldbeexpectedfromatendencyfor
+theproceduretoapproximateminimumvariancepartitions.
+RunningtimesoftheaboveprogramontheIBM7094varywithC,R,the
+numberofdimensions,andthenumberofpoints.A conservativeestimatefor
+20-dimensionaldata,withCandRsetsothatkstaysinthevicinityof20,isone
+minutefortwohundredsamplepoints.Mostofthiscomputationtimeresults
+fromthecoarseningandrefiningprocedureandtheauxiliaryfeatures.Alimited
+amountofexperienceindicatestheundecoratedk-meansprocedurewithk= 20
+willprocessfivehundredpointsin20dimensionsinsomethinglike10seconds.
+3.2.Relevantclassifications.Supposeitisdesiredtodevelopaclassification
+schemeonthebasisofasample,sothatknowingtheclassificationofanewpoint,
+itwillbepossibletopredictagivendependentvariable.Thevaluesofthede-
+
+[PDF PAGE 11]
+MULTIVARIATE OBSERVATIONS 291
+pendentvariableareknownforthesample.Onewaytodothis,closelyrelated
+toaprocedureproposedbyFixandHodges[6],isillustratedbythefollowing
+computerexperiment.A sampleof250four-dimensionalrandomvectorswas
+prepared,withthevaluesoneachdimensionbeingindependentlyanduniformly
+distributedontheintegers1through10.Twoofthedimensionswerethenarbi-
+trarilyselected,andifwithrespecttothesetwodimensionsapointwaseither
+'high'(above5)onbothor'low'(5orless)onboth,itwascalledanA;otherwise,
+itwascalledaB.Thisgave121A'sand129B'swhichwererelatedtotheselected
+dimensionsinastronglyinteractivefashion.Thek-meanswithk= 8werethen
+obtainedfortheA'sandB'sseparately.Finally,usingtheresulting16(four-
+dimensional)means,aprediction,AorB,wasmadeforeachofanewsampleof
+250pointsonthebasisofwhetherornoteachpointwasnearesttoanAmean
+oraBmean.Thesepredictionsturnedouttobe87%correct.
+Asthisexampleshows,themethodispotentiallycapableoftakingadvantage
+ofahighlynonlinearrelationship.Also,themethodhassomethingtorecommend
+itfromthepointofviewofsimplicity,andcaneasilybeappliedinmanydi-
+mensionsandtomorethantwo-valueddependentvariables.
+3.3.Approximatingageneraldistribution.Supposeitisdesiredtoapproxi-
+mateadistributiononthebasisofasampleofpoints.Firstthesamplepointsare
+processedusingthek-meansconceptorsomeothermethodwhichgivesa
+minimumdistancepartitionofthesamplepoints.Theapproximation,involving
+afamiliartechnique,consistsofsimplyfittingajointnormaldistributiontothe
+pointsineachgroup,andtakingastheapproximationtheprobabilitycombi-
+nationofthesedistributions,withtheprobabilitiesproportionaltothenumber
+ofpointsineachgroup.
+Havingfittedamixtureofnormalsinthisway,itiscomputationallyeasy(ona
+computer)todotwotypesofanalysis.Oneispredictingunknowncoordinatesof
+anewpointgiventheremainingcoordinates.Thismaybedonebyusingthe
+regressionfunctiondeterminedontheassumptionthatthefittedmixtureisthe
+truedistribution.Anotherpossibleapplicationisakindofnonlineardiscriminant
+analysis.A mixtureofknormalsisfittedintheabovefashiontotwosamples
+representingtwogivendifferentpopulations;onecantheneasilycomputethe
+appropriatelikelihoodratiosfordecidingtowhichpopulationanewpoint
+belongs.Thismethodavoidscertaindifficultiesencounteredinordinarydiscrimi-
+nantanalysis,suchaswhenthetwopopulationsareeachcomposedofseveral
+distinctsubgroups,butwithsomeofthesubgroupsfromonepopulationactually
+betweenthesubgroupsoftheother.Typicallyinthissituation,oneorseveral
+ofthek-meanswillbecenteredineachofthesubgroups-providedkislarge
+enough-andthefittednormalsthenprovideareasonableapproximationtothe
+mixture.
+Toillustratetheapplicationoftheregressiontechnique,considertheartificial
+sampleoffour-dimensionalA'sandB'sdescribedintheprecedingsection.On
+afifthdimension,theA'swerearbitrarilygivenavalueof10,andtheB'savalue
+of0.Thek-meansprocedurewithk= 16wasusedtopartitionthecombined
+
+[PDF PAGE 12]
+292 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+sampleof250five-dimensionalpoints.Thenthemixtureof16normaldistri-
+butionswasdeterminedasdescribedaboveforthissample.Thesecondsample
+of250pointswaspreparedsimilarly,andpredictionsweremadeforthefifth
+dimensiononthebasisoftheoriginalfour.Thestandarderrorofestimateon
+thenewsamplewas2.8.If,intermsoftheoriginalA-Bclassification,wehad
+calledapointonA ifthepredictedvalueexceeded5,andaBotherwise,96%
+ofthedesignationswouldhavebeencorrectonthenewsample.Themeanofthe
+predictionsfortheA'swas10.3,andforB's,1.3.
+Consideringtherathercomplexandhighlynonlinearrelationshipinvolved
+intheabovesample,itisdoubtfulthatanyconventionaltechniquewoulddo
+aswell.Inthefewinstanceswhichweretested,themethodperformednearly
+aswellaslinearregressiononnormallydistributedsamples,providedkwasnot
+toolarge.Thisisnotsurprisinginasmuchaswithk= 1themethodislinear
+regression.Indeterminingthechoiceofk,oneprocedureistoincreasekaslong
+astheerrorofestimatedrops.Sincethiswillprobablyresultin"overfitting"
+thesample,acrossvalidationgroupisessential.
+3.4.Ascrambleddimensiontestforindependenceamongseveralvariables.Asa
+generaltestforrelationshipamongvariablesinasampleofN-dimensionalob-
+servations,weproposeproceedingasfollows.First,thesamplepointsaregrouped
+intoaminimumdistancepartitionusingk-means,andthewithin-classvariance
+isdetermined.Thentherelationamongthevariablesisdestroyedbyrandomly
+associatingthevaluesineachdimension;thatis,asampleispreparedinwhich
+thevariablesareunrelated,butwhichhasexactlythesamemarginaldistri-
+butionsastheoriginalsample.Aminimumdistancepartitionandtheassociated
+within-classvarianceisnowdeterminedforthissample.Intuitionandinspection
+ofafewobviousexamplessuggestthatontheaveragethis"scrambling"will
+tendtoincreasethewithin-classvariance,moreorlessregardlessofwhatever
+typeofrelationmighthaveexistedamongthevariables,andthuscomparison
+ofthetwovarianceswouldrevealwhetherornotanysuchrelationexisted.
+Toillustratethismethod,asampleof150pointswaspreparedinwhichpoints
+weredistributeduniformlyoutsideasquare60unitsonaside,butinsidea
+surroundingsquare100unitsonaside.Thisgaveasamplewhichinvolves
+essentiallyazerocorrelationcoefficient,andyetasubstantialdegreeofrelation-
+shipwhichcouldnotbedetectedbyanyconventionalquantitativetechnique
+knowntotheauthor(althoughitcouldbedetectedimmediatelybyvisual
+inspection).Theaboveprocedurewascarriedoutusingk-meanswithk= 12.
+Aswasexpected,thevarianceafterscramblingwasincreasedbyafactorof1.6.
+Thewithin-classvarianceswerenotonlylargerinthescrambleddata,butwere
+apparentlymorevariable.Thisprocedurewasalsoappliedtothefive-
+dimensionalsampledescribedintheprecedingsection.Usingk= 6,12,and18,
+thewithin-classvarianceincreasedafterscramblingbythefactors1.40,1.55,
+and1.39,respectively.
+Astatisticaltestfornonindependencecanbeconstructedbysimplyrepeating
+thescramblingandpartitioninganumberoftimes,thusobtainingempiricallya
+
+[PDF PAGE 13]
+MULTIVARIATE OBSERVATIONS 293
+samplefromtheconditionaldistributionofthewithin-classvarianceunlderthe
+hypothesisthatthevariablesareunrelatedandgiventhemarginalvaluesofthe
+sample.Underthehypothesisofindependence,theunscrambledvarianceshould
+havethesame(conditional)distributionasthescrambledvariance.Infact,the
+rankoftheunscrambledvarianceinthisempiricaldistributionshouldbe
+equallylikelytotakeonanyofthepossiblevalues1,2,***,n+ 1,wherenis
+thenumberofscrambledsamplestaken,regardlessofthemarginaldistributions
+intheunderlyingpopulation.Thustherankcanbeusedinanonparametric
+testofthehypothesisofindependence.Forexample,iftheunscrambledvariance
+isthelowestin19valuesofthescrambledvariance,wecanrejectthehypothesis
+ofindependencewithaTypeIerrorof.05.
+A computerprogramwasnotavailabletodothescrambling,anditsbeing
+inconvenienttosetuplargenumbersofscrambledsamplesusingpunchedcards,
+furthertestingofthismethodwasnotundertaken.Itisestimated,however,that
+anefficientcomputerprogramwouldeasilypermitthistesttobeappliedat,say,
+the.01level,onlargesamplesinmanydimensions.
+Thepowerofthisprocedureremainstobeseen.Ontheencouragingsideis
+therelatedconjecture,thatforfixedmarginaldistributions,thewithin-class
+variancefortheoptimalpartitionasdefinedinsection1ismaximalwhenthe
+jointdistributionisactuallytheproductofthemarginals.Ifthisistrue(and
+itseemslikelythatitis,atleastforalargeclassofreasonabledistributions),
+thenwereasonthatsincethek-meansprocesstendstogiveagoodpartition,this
+differencewillbepreservedinthescrambledandunscrambledvariances,par-
+ticularlyforlargesamples.Variationinthewithin-classvarianceduetothe
+randomorderinwhichthepointsareprocessed,canbereducedbytaking
+severalrandomorders,andaveragingtheirresult.Ifthisisdoneforthe
+scrambledrunsaswell,theTypeIerrorispreserved,whilethepowerisincreased
+somewhat.
+3.5.Distance-basedclassificationtrees.Thek-meansconceptprovidesanumber
+ofsimpleproceduresfordevelopinglexigraphicclassificationsystems(filing
+systems,indexsystems,andsoon)foralargesampleofpoints.Toillustrate,we
+describebrieflyaprocedurewhichresultsinthewithin-groupvarianceofeachof
+thegroupsatthemostrefinedlevelofclassificationbeingnomorethanaspecified
+number,sayR.Thesamplek-meansarefirstdeterminedwithaselectedvalueof
+k,forexample,k= 2.Ifthevarianceofanyofthegroupsofpointsnearestto
+thesemeansislessthanR,thesegroupsarenotsubclassifiedfurther.Theremain-
+inggroupsareeachprocessedinthesameway,thatis,k-meansaredetermined
+foreachofthem,andthenforthepointsnearesteachofthese,andsoon.This
+iscontinueduntilonlygroupswithwithin-groupvariancelessthanRremain.
+Thusforeachmeanatthefirstlevel,thereisassociatedseveralmeansatthe
+secondlevel,andsoon.Oncethemeansateachlevelaredeterminedfromthe
+sampleinthisfashion,theclassificationofanewpointisdefinedbytherule:
+first,seewhichoneofthefirstlevelk-meansthepointisnearest;thenseewhich
+oneofthesecond-levelk-meansassociatedwiththatmeanthepointisnearest,
+
+[PDF PAGE 14]
+294 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+andsoon;finallythepointisassignedtoagroupwhichinthedeterminingsample
+hasvariancenomorethanR.
+Thisprocedurehassomepromisingfeatures.First,theamountofcomputation
+requiredtodeterminetheindexisapproximatelylinearinthesamplesizeand
+thenumberoflevels.Theprocedurecanbeimplementedeasilyonthecomputer.
+Ateachstageduringtheconstructionoftheclassificationtree,weareemploying
+apowerfulheuristic,whichconsistssimplyofputtingpointswhicharenearto
+eachotherinthesamegroup.Eachofthemeansateachlevelisafairrepre-
+sentationofitsgroup,andcanbeusedforcertainotherpurposes,forinstance,
+tocompareotherpropertiesofthepointsasafunctionoftheirclassification.
+3.6.A two-stepimprovementprocedure.Themethodofobtainingpartitions
+withlowwithin-classvariancewhichwassuggestedbyForgyandJennrich(see
+section1.1)worksasfollows.Startingwithanarbitrarypartitionintoksets,the
+meansofthepointsineachsetarefirstcomputed.Thenanewpartitionofthe
+pointsisformedbytheruleofputtingthepointsintogroupsofthebasisof
+nearnesstothefirstsetofmeans.Theaveragesquareddistanceofthepointsin
+thenewpartitionfromthefirstsetofmeans(thatis,fromtheirnearestmeans)
+isobviouslylessthanthewithin-classvarianceofthefirstpartition.Butthe
+averagewithin-classvarianceofthenewpartitionisevenlower,forthevariance
+ofthesquareddistanceofthepointsineachgroupfromtheirrespectivemeans,
+andthemean,ofcourse,isthatpointwhichminimizestheaveragesquared
+distancefromitself.Thusthenewpartitionhaslowervariance.Computationally,
+thetwostepsofthemethodare(1)computethemeansofthepointsineach
+setintheinitialpartitionand(2)reclassifythepointsonthebasisofnearness
+tothesemeans,thusforminganewpartition.Thiscanbeiteratedandtheseries
+ofthepartitionsthusproducedhavedecreasingwithin-classvariancesandwill
+convergeinafinitenumberofsteps.
+Foragivensample,onecycleofthismethodrequiresaboutasmuchcompu-
+tationasthek-means.Thefinalpartitionobtainedwilldependontheinitial
+partition,muchasthepartitionproducedbyk-meanswilldependonrandom
+variationintheorderinwhichthepointsareprocessed.Nevertheless,the
+procedurehasmuchtorecommendit.Bymakingrepeatedrunswithdifferent
+initialstartingpoints,itwouldseemlikelythatonewouldactuallyobtainthe
+samplepartitionwithminimumwithin-classvariance.
+4.Generalmetricspaces
+Itmaybesomethingmorethanameremathematicalexercisetoattemptto
+extendtheideaofk-meanstogeneralmetricspaces.Metricspacesotherthan
+Euclidianonesdooccurinpractice.Oneprominentexampleisthespaceof
+binarysequencesoffixedlengthunderHammingdistance.
+Animmediatedifficultyinmakingsuchanextensionisthenotionofmean
+itself.ThearithmeticoperationsdefiningthemeaninEuclidianspacemaynot
+beavailable.However,withthecommunicationproblemofsection1inmind,
+
+[PDF PAGE 15]
+MULTIVARIATE OBSERVATIONS 295
+onethinksoftheproblemofrepresentingapopulationbyapoint,thegoalbeing
+tohavelowaverageerrorinsomesense.Thusweareledtoproceedrather
+naturallyasfollows.
+LetM beacompactmetricspacewithdistancep,let5Ybetheo--algebraof
+subsetsofM,andletpbeaprobabilitymeasureon5.Forthemeasurep,
+acentroidoforderr> 0isanypointintheseterofpointsx*suchthat
+fpr(x*,z)dp(z)=inf.fpr(x,z)dp(z).Thequantityfpr(x*,z)dp(z)isther-th
+momentofp.ThecompactnessandthecontinuityofpguaranteethatCeis
+nonempty.Forfinitesamples,samplecentroidsaredefinedanalogously,each
+pointinthesamplebeingtreatedashavingmeasure1/nwherenisthesample
+size;namely,forasampleofsizen,thesamplecentroidisdefineduptoanequiva-
+lenceclasse whichconsistsofallthosepointsAnsuchthatF_-=IPr(nZi)=
+inf.X?..1pr(x,zi),wherezl,Z2,... ,Znisthesample.
+NotethatwithM therealline,andpordinarydistance,r= 2yieldsthe
+ordinarymean,andr= 1yieldsthefamilyofmedians.Asrtendstoco,the
+elementsofC,.willtendtohave(inamannerwhichcaneasilybemadeprecise)
+thepropertythattheyarecentersforasphericalcoveringofthespacewith
+minimalradius.Inparticular,ontheline,thecentroidwilltendtothemid-range.
+Asrtendstozero,oneobtainswhatmaywithsomejustificationbecalledamode,
+foronacompactset,pr(x,y)isapproximately1forsmallr,exceptwherexandy
+areverynear,sothatminimizingfpr(x,y)dp(y)withrespecttox,involves
+attemptingtolocatexsothatthereisalargeamountofprobabilityinits
+immediatevicinity.(Thisrelationshipcanalsobemadeprecise.)
+Wenotethattheoptimumcommunicationproblemmentionedinsection1.1
+nowtakesthefollowinggeneralform.FindapartitionS= {Si,S2,** Sk}
+whichminimizesw = _f-fsipl(xi,y)dp(y),wherex4isthecentroidoforder
+rwithrespecttothe(conditional)distributiononSi.Ifthereisanymassin
+asetSinearertoxjthantoxi,js!i,thenwcanbereducedbymodifying
+SiandSisoastoreassignthismasstoSj.Itfollowsthatinminimizingwwe
+canrestrictattentiontopartitionswhichareminimumdistancepartitions,
+analogoustothosedefinedinsection2,thatis,partitionsoftheformS(x)=
+{S.(x),S2(x),***,Sk(x)}wherex= (xI,x2,***,Xk)isak-tupleofpointsinM,
+andSi(x)isasetofpointsatleastasnearxi(intermsofp)astoxjifj# i.
+Inkeepingwiththeterminologyofsection2,wemaysaythatak-tuple,or
+"k-point,"x= (xl,x2,***,Xk)isunbiasedifxi,i= 1,2,* ,k,belongstothe
+classofpointswhicharecentroidswithinSi(x).
+Itisnowclearhowtoextendtheconceptofk-meanstometricspaces;the
+notionofcentroidreplacesthemorespecialconceptofmean.Thefirst
+'k-centroid'(xl,xl,***,xk)consistsofthefirstkpointsinthesample,and
+thereafteraseachnewpointisconsidered,thenearestofthecentroidsisde-
+termined.Thenewpointisassignedtothecorrespondinggroupandthecentroid
+ofthatgroupmodifiedaccordingly,andsoon.
+Itwouldseemreasonabletosupposethattheobviousextensionoftheorem1
+wouldhold.Thatis,underindependentsampling,Ek1fs.(Xt)pt(z4)dp(z)will
+
+[PDF PAGE 16]
+296 FIFTHBERKELEY SYMPOSIUM:MAC QUEEN
+convergea.s.,andtheconvergentsubsequencesofthesequenceofsample
+k-centroidswillhavetheirlimitsintheclassofunbiasedk-points.Thisistrue,
+atanyrate,fork= 1andr= 1,forifzl,Z2,.--,znareindependent,
+Es=ip(Zz,y)/nisthemean ofindependent,identicallydistributedrandom
+variables,whichbecauseM iscompact,areuniformlyboundediny.Itfol-
+lows(cf.Parzen[13])thatEt ,p(Zi,y)/nconvergesa.s.tofp(z,y)dp(z)
+uniformlyiny.Bydefinitionofthesamplecentroid,wehaveE_t1p(Zi,x*)/n>
+EJ-1p(Zi,In)/n;hence,fp(z,x*)dp(z)2limsupEt'Ip(Zi,1n)/nwithprobability
+1.On theotherhand,fromthetriangleinequality,F,.ip(zi,y)/n<
+F-J-p(zi,1.)/n+p(£,Y).Usingthisinequalityonaconvergentsubsequence
+Ilni-tn2,...,chosensothat
+ ne ~~~~~~~n(4.1) limE p(zi,I.)/n,= liminfL p(Zi,&n)/n,t-*Oij1 i=1
+weseethatwithprobability1,
+(4.2)fp(z,x*)dp(z)<fp(z,y)dp(z)< liminfL_p(zi,x4)/n,
+wherey=limi,£.
+Providedthenecessarycomputationscanbeaccomplished,themethods
+suggestedinsections3.1,3.2,3.4,3.5,and3.6canallbeextendedtogeneral
+metricspacesinaquitestraightforwardfashion.
+ACKNOWLEDGMENTS
+TheauthorisespeciallyindebtedtoTom Ferguson,EdwardForgy,and
+RobertJennrich,formanyvaluablediscussionsoftheproblemstowhichthe
+aboveresultspertain.RichardTenneyandSonyaBaumsteinprovidedthe
+essentialprogrammingsupport,forwhichtheauthorisverygrateful.Computing
+facilitieswereprovidedbytheWesternDataProcessingCenter.
+K K K K K
+Noteaddedinproof.TheauthorrecentlylearnedthatC.S.Wallaceofthe
+UniversityofSidneyandG.H.BalloftheStanfordResearchInstitutehave
+independentlyusedthismethodasapartofamorecomplexprocedure.Ballhas
+describedhismethod,andreviewedearlierliterature,intheinterestingpaper
+"Dataanalysisinthesocialsciences:Whataboutthedetails?",Proceedingsof
+theFallJointComputerConference,Washington,D.C.,SpartanBooks,1965.
+REFERENCES
+[1]DAVIDBLACKWELL,"Comparisonofexperiments,"ProceedingsoftheSecondBerkeley
+SymposiumonMathematicalStatisticsandProbability,BerkeleyandLosAngeles,Uni-
+versityofCaliforniaPress,1951,pp.93-102.
+
+[PDF PAGE 17]
+MULTIVARIATE OBSERVATIONS 297
+[2]D.R.Cox,"Noteongrouping,"J.Amer.Statist.Assoc.,Vol.52(1957),pp.543-547.
+[3]J.L.DOOB,StochasticProcesses,NewYork,Wiley,1953.
+[4]L.E.DUBINSandL.J.SAVAGE,"ATchebycheff-likeinequalityforstochasticprocesses,"
+Proc.Nat.Acad.Sci.U.S.A.,Vol.53(1965),pp.274-275.
+[5]W.D.FISHER,"Ongroupingformaximumhomogeneity,"J.Amer.Statist.Assoc.,Vol.
+53(1958),pp.789-798.
+[6]EVELYNFixandJ.L.HODGES,JR.,"DiscriminatoryAnalysis,"USAFProjectReport,
+SchoolofAviationMedicine,ProjectNumber21-49-004,No.4(1951).
+[7]EDWARDFORGY,"Clusteranalysisofmultivariatedata:efficiencyvs.interpretabilityof
+classifications,"abstract,Biometrics,Vol.21(1965),p.768.
+[8]PAULR.HALMOS,MeasureTheory,NewYork,VanNostrand,1950.
+[9]J.MACQUEEN,"Theclassificationproblem,"WesternManagementScienceInstitute
+WorkingPaperNo.5,1962.
+[10] ,"Onconvergenceofk-meansandpartitionswithminimumaveragevariance,"
+abstract,Ann.Math.Statist.,Vol.36(1965),p.1084.
+[11]JACOBMARSCHAK,"Towardsaneconomictheoryoforganizationandinformation,"
+DecisionProcesses,editedbyR.M.Thrall,C.H.Coombs,andR.C.Davis,NewYork,
+Wiley,1954.
+[12] ,"Remarksontheeconomicsofinformation,"Proceedingsofthescientificprogram
+followingthededicationoftheWesternDataProcessingCenter,UniversityofCalifornia,
+LosAngeles,January29-30,1959.
+[13]EMANUELPARZEN,"Onuniformconvergenceoffamiliesofsequencesofrandomvari-
+ables,"Univ.CaliforniaPubl.Statist.,Vol.2,No.2(1954),pp.23-54.
+[14]GEORGES.SEBESTYEN,DecisionMakingProcessinPatternRecognition,NewYork,
+Macmillan,1962.
+[15]ROBERTR.SOKALandPETERH.SNEATH,PrinciplesofNumericalTaxonomy,San
+Francisco,Freeman,1963.
+[16]JOEWARD,"Hierarchicalgroupingtooptimizeanobjectivefunction,"J.Amer.Statist.
+Assoc.,Vol.58(1963),pp.236-244.

@@ -394,6 +394,36 @@ async def test_token_usage_accumulates():
     assert c["usage"][2].input_tokens == 600
     assert c["usage"][2].output_tokens == 230
 
+
+@pytest.mark.asyncio
+async def test_noninteractive_repeated_tool_call_is_blocked_and_reported(tmp_path: Path):
+    repeated = [
+        [
+            TextDelta("Retrying the same lookup."),
+            ToolCallComplete(f"t{i}", "ReadFile", {"file_path": "missing.txt"}),
+            StreamEnd("end_turn", input_tokens=2, output_tokens=1),
+        ]
+        for i in range(3)
+    ]
+    agent = Agent(
+        MockLLMClient(repeated), create_default_registry(), "anthropic",
+        work_dir=str(tmp_path), max_iterations=3,
+    )
+    events: list[dict[str, Any]] = []
+
+    with pytest.raises(RuntimeError, match="exceeded 3 iterations"):
+        await agent.run_to_completion(
+            "Read the missing file", event_callback=events.append
+        )
+
+    results = [event for event in events if event["type"] == "tool_result"]
+    assert len(results) == 3
+    assert results[-1]["is_error"] is True
+    assert "Repeated tool call blocked" in results[-1]["output"]
+    assert results[-1]["attempt"] == 3
+    assert results[0]["error_category"] == "execution"
+    assert any(event["type"] == "agent_phase" for event in events)
+
 @pytest.mark.asyncio
 async def test_plan_mode():
     """通过 permission_mode 切换 plan 模式。"""

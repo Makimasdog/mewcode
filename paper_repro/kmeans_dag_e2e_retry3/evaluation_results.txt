@@ -1,0 +1,7 @@
+K-Means Evaluation Results
+========================
+Number of runs: 5
+Inertia mean: 150.2014
+Inertia std: 6.1746
+Accuracy mean: 0.4000
+Accuracy std: 0.3266

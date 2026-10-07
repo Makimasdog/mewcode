@@ -41,6 +41,17 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+
+def _failure_category(message: str) -> str:
+    value = message.lower()
+    if "timeout" in value or "timed out" in value:
+        return "timeout"
+    if any(token in value for token in ("429", "rate limit", "connection", "network", "temporarily unavailable")):
+        return "transient"
+    if any(token in value for token in ("api key", "authentication", "unauthorized", "401")):
+        return "configuration"
+    return "execution"
+
 # 工厂类型别名
 AgentFactory = Callable[[AgentRun], "Agent"]
 ConversationFactory = Callable[[AgentRun], "ConversationManager | None"]
@@ -50,7 +61,7 @@ ConversationSaver = Callable[[AgentRun, "ConversationManager", int], None]
 class AgentRuntime:
     """
     Agent 运行时服务 — 管理 Agent 执行的完整生命周期。
-    
+
     设计亮点：
     - 与 Textual/FastAPI 解耦: CLI、HTTP、Worker 都可以提交相同的运行
     - 事件流持久化: 支持 SSE 实时推送，也支持事后回放
@@ -66,7 +77,7 @@ class AgentRuntime:
     ) -> None:
         """
         初始化运行时。
-        
+
         agent_factory: 创建 Agent 实例的工厂（重试时会重新创建）
         conversation_factory: 创建/恢复对话上下文的工厂
         conversation_saver: 保存对话历史的回调
@@ -94,7 +105,7 @@ class AgentRuntime:
     ) -> AgentRun:
         """
         提交运行请求。
-        
+
         流程：
         1. 创建 AgentRun 记录
         2. 持久化到磁盘
@@ -119,11 +130,11 @@ class AgentRuntime:
     async def _execute(self, run: AgentRun, initial_agent: Agent | None) -> None:
         """
         执行运行的核心逻辑。
-        
+
         重试策略：
         - 失败后等待指数退避（2^attempt 秒，最多 8 秒）
         - 重试时通过 agent_factory 创建新的 Agent 实例
-        
+
         超时控制：
         - 使用 asyncio.wait_for 包装执行
         - 超时后发射 run_timeout 事件并尝试重试
@@ -144,6 +155,15 @@ class AgentRuntime:
                         raise RuntimeError("No agent factory configured for run")
                     agent = self.agent_factory(run)
                 self._agents[run.id] = agent
+                self._emit(run.id, "agent_created", {
+                    "agent_id": getattr(agent, "agent_id", run.id),
+                    "parent_id": getattr(agent, "parent_id", None),
+                    "trace_id": getattr(agent, "trace_id", None) or run.id,
+                    "agent_type": "main",
+                    "agent_name": "主 Agent",
+                    "status": "running",
+                    "run_elapsed_ms": 0,
+                })
 
                 callback = lambda event: self._on_agent_event(run.id, event)
                 conversation = (
@@ -160,7 +180,10 @@ class AgentRuntime:
                         result = await coro
                 except asyncio.TimeoutError:
                     run.error = f"run timed out after {run.timeout_seconds}s"
-                    self._emit(run.id, "run_timeout", {"attempt": run.attempt})
+                    self._emit(run.id, "run_timeout", {
+                        "attempt": run.attempt,
+                        "error_category": "timeout",
+                    })
                 else:
                     # 执行成功
                     run.result = result or ""
@@ -174,12 +197,18 @@ class AgentRuntime:
 
                 # 失败后重试
                 if run.attempt < run.max_attempts:
+                    delay = min(2 ** (run.attempt - 1), 8)
                     self._emit(
                         run.id,
                         "run_retrying",
-                        {"attempt": run.attempt, "next_attempt": run.attempt + 1},
+                        {
+                            "attempt": run.attempt,
+                            "next_attempt": run.attempt + 1,
+                            "error_category": _failure_category(run.error),
+                            "delay_seconds": delay,
+                        },
                     )
-                    await asyncio.sleep(min(2 ** (run.attempt - 1), 8))  # 指数退避
+                    await asyncio.sleep(delay)  # 有限次指数退避
                     continue
 
                 # 达到最大重试次数
@@ -199,8 +228,15 @@ class AgentRuntime:
             log.exception("Agent run %s failed", run.id)
             run.error = str(exc)
             if run.attempt < run.max_attempts:
-                self._emit(run.id, "run_retrying", {"error": str(exc)})
-                await asyncio.sleep(min(2 ** max(run.attempt - 1, 0), 8))
+                delay = min(2 ** max(run.attempt - 1, 0), 8)
+                self._emit(run.id, "run_retrying", {
+                    "error": str(exc),
+                    "error_category": _failure_category(str(exc)),
+                    "attempt": run.attempt,
+                    "next_attempt": run.attempt + 1,
+                    "delay_seconds": delay,
+                })
+                await asyncio.sleep(delay)
                 await self._execute(run, None)  # 递归重试
                 return
             run.status = RunStatus.FAILED
@@ -213,13 +249,30 @@ class AgentRuntime:
 
     def _on_agent_event(self, run_id: str, event: dict[str, Any]) -> None:
         """处理 Agent 执行过程中的事件（转发到事件流）"""
-        event_type = str(event.get("type", "agent_event"))
-        self._emit(run_id, event_type, event)
+        payload = dict(event)
+        run = self.get(run_id)
+        agent = self._agents.get(run_id)
+        if run is not None and run.started_at:
+            payload.setdefault("run_elapsed_ms", round((time.time() - run.started_at) * 1000))
+            payload.setdefault("attempt", run.attempt)
+            provider = run.metadata.get("provider")
+            if provider:
+                payload.setdefault("provider", provider)
+        model = getattr(getattr(agent, "client", None), "model", None)
+        if model:
+            payload.setdefault("model", model)
+        if agent is not None:
+            payload.setdefault("agent_id", getattr(agent, "agent_id", run_id))
+            payload.setdefault("parent_id", getattr(agent, "parent_id", None))
+            payload.setdefault("trace_id", getattr(agent, "trace_id", None) or run_id)
+            payload.setdefault("agent_type", "main")
+        event_type = str(payload.get("type", "agent_event"))
+        self._emit(run_id, event_type, payload)
 
     def _emit(self, run_id: str, event_type: str, payload: dict[str, Any]) -> RunEvent:
         """
         发射事件。
-        
+
         流程：
         1. 持久化到事件日志
         2. 推送到所有订阅者的队列
@@ -242,6 +295,10 @@ class AgentRuntime:
         task = self._tasks.get(run_id)
         if task is None or task.done():
             return False
+        agent = self._agents.get(run_id)
+        cancel = getattr(agent, "cancel", None)
+        if callable(cancel):
+            cancel()
         task.cancel()
         return True
 
@@ -252,7 +309,7 @@ class AgentRuntime:
     async def subscribe(self, run_id: str, after: int = 0) -> AsyncIterator[RunEvent]:
         """
         订阅运行事件流。
-        
+
         流程：
         1. 先回放已持久化的事件
         2. 然后实时跟随新事件
@@ -281,10 +338,10 @@ class AgentRuntime:
     async def recover(self) -> list[AgentRun]:
         """
         进程恢复：重新调度未完成的运行。
-        
+
         场景：进程崩溃重启后，磁盘上可能还有 PENDING/RUNNING 状态的运行。
         这个方法将它们重新加入执行队列。
-        
+
         注意：对话上下文的精确恢复由 conversation_factory 负责。
         """
         recovered: list[AgentRun] = []

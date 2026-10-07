@@ -42,34 +42,48 @@ from mewcode.runtime.service import AgentRuntime
 from mewcode.runtime.store import RunStore
 from mewcode.tools import create_default_registry
 from mewcode.tools.impl.tool_search import ToolSearchTool
+from mewcode.agents.loader import AgentLoader
+from mewcode.agents.task_manager import TaskManager
+from mewcode.agents.trace import TraceManager
+
+
+def _runtime_permission_mode(configured: str) -> PermissionMode:
+    # The HTTP runtime has no terminal prompt; default mode would reject every
+    # write or orchestration call. Explicit permission modes still take priority.
+    return PermissionMode.DONT_ASK if configured == PermissionMode.DEFAULT.value else PermissionMode(configured)
 
 
 def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntime:
     """
     构建服务就绪的 AgentRuntime。
-    
+
     工厂意图：
     - 每次重试/运行创建新的 Agent 实例
     - 会话映射保持多轮对话的连续性
     - 会话保存器将新消息写入 JSONL，TUI 和 HTTP 运行时共享相同的恢复原语
-    
+
     返回的 AgentRuntime 可直接用于 HTTP 服务或 CLI。
     """
     root = str(Path(work_dir or os.getcwd()).resolve())
     provider_configs: dict[str, ProviderConfig] = {p.name: p for p in config.providers}
     provider_state = {"active": config.providers[0].name}
     session_manager = SessionManager(root)
-    
+
     # 闭包状态：会话映射（同一 session_id 共享对话）
     conversations: dict[str, ConversationManager] = {}
     sessions: dict[str, Session] = {}
     cursors: dict[str, int] = {}  # 会话写入游标
     instructions = load_instructions(root)
+    agent_loader = AgentLoader(root, enable_verification=config.enable_verification_agent)
+    agent_loader.load_all()
+    trace_manager = TraceManager()
+    task_manager = TaskManager(store=RunStore(Path(root) / ".mewcode" / "runs"))
+    runtime_holder: dict[str, AgentRuntime] = {}
 
     def get_conversation(run: AgentRun) -> ConversationManager:
         """
         获取或创建对话上下文。
-        
+
         流程：
         1. 检查内存缓存（同一 session_id 复用）
         2. 尝试从磁盘恢复会话
@@ -101,7 +115,7 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
     ) -> None:
         """
         保存对话历史到 JSONL。
-        
+
         只写入新增的消息（从 cursor 位置开始）。
         """
         session_id = run.session_id or run.id
@@ -116,7 +130,7 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
     def factory(run: AgentRun) -> Agent:
         """
         Agent 工厂 — 创建新的 Agent 实例。
-        
+
         每次重试都会创建新的 Agent，确保状态干净。
         组装组件：LLM 客户端、权限检查器、工具注册表。
         """
@@ -131,10 +145,20 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
                 project_rules_path=Path(root) / ".mewcode" / "permissions.yaml",
                 local_rules_path=Path(root) / ".mewcode" / "permissions.local.yaml",
             ),
-            mode=PermissionMode(config.permission_mode),
+            mode=_runtime_permission_mode(config.permission_mode),
         )
         registry = create_default_registry()
         registry.register(ToolSearchTool(registry, protocol=provider.protocol))
+        event_callback = lambda event: runtime_holder["runtime"]._on_agent_event(run.id, event)
+        from mewcode.tools.agent_tool import AgentTool
+        agent_tool = AgentTool(
+            agent_loader=agent_loader,
+            task_manager=task_manager,
+            trace_manager=trace_manager,
+            parent_agent=None,  # replaced after Agent construction
+            provider_config=provider,
+            event_callback=event_callback,
+        )
         agent = Agent(
             client=client,
             registry=registry,
@@ -144,7 +168,14 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
             context_window=provider.get_context_window(),
             instructions_content=instructions,
         )
+        registry.register(agent_tool)
+        from mewcode.tools.dag_tools import DAGCreateTool, DAGStatusTool
+        dag_tool = DAGCreateTool(agent_tool, work_dir=root, event_callback=agent_tool._emit)
+        registry.register(dag_tool)
+        registry.register(DAGStatusTool(dag_tool.scheduler))
         agent.session_id = run.session_id or run.id
+        agent.trace_id = run.id
+        agent_tool._parent_agent = agent
         return agent
 
     runtime = AgentRuntime(
@@ -153,6 +184,7 @@ def build_runtime(config: AppConfig, work_dir: str | None = None) -> AgentRuntim
         conversation_saver=save_conversation,
         store=RunStore(Path(root) / ".mewcode" / "runs"),
     )
+    runtime_holder["runtime"] = runtime
     # HTTP controls can add/select profiles without rebuilding the process.
     # The profile map remains in memory and is also exposed for local config
     # persistence by the HTTP adapter.

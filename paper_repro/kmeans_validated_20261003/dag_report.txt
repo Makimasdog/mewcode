@@ -1,0 +1,147 @@
+DAG 'macqueen-kmeans' completed with status: completed
+Run ID: fe8432f22288
+✓ search: completed
+All relevant files have been read. Here is the complete report extracted directly from the downloaded and verified source evidence:
+
+---
+
+## Final Report: MacQueen (1967) "Some Methods for Classification and Analysis of Multivariate Observations"
+
+### SOURCE URL:
+`https://www.cs.cmu.edu/~bhiksha/courses/mlsp.fall2010/class14/macqueen.pdf`
+
+### HTTP STATUS:
+`200` — successfully retrieved, final URL matches original.
+
+### PDF PAGES:
+`17` pages. SHA-256 verified as `55dc4458c47e13ccfb0f8afbc57862b3edd8432905bf391e61e75859c41aa1c0`.
+
+### SECTION 2.1 EXCERPT:
+**[PDF PAGE 3]** "Let z₁, z₂, ... be a random sequence of points (vectors) in E^N, each point being selected independently of the preceding ones using a fixed probability measure p."
+
+> "Define a minimum distance partition S(x) = {S₁(x), S₂(x), ..., Sₖ(x)} of E^N, by Sᵢ(x) = Tᵢ(x) \ S₁(x)... where Tᵢ(x) = {z ∈ E^N : |z - xᵢ| ≤ |z - xⱼ|, j = 1, 2, ..., k}. The set Sᵢ(x) contains the points in E^N nearest to xᵢ, with tied points being assigned arbitrarily to the set of lower index."
+
+> "xᵢⁿ⁺¹ = (Wᵢⁿ x̄ᵢⁿ + zₙ₊ₖ) / (Wᵢⁿ + 1), Wᵢⁿ⁺¹ = Wᵢⁿ + 1, and xⱼⁿ⁺¹ = xⱼⁿ for j ≠ i"
+
+> "Stated informally, the k-means procedure consists of simply starting with k groups each of which consists of a single random point, and thereafter adding each new point to the group whose mean the new point is nearest."
+
+**Initialization:** First k centers = first k data points (xᵢⁿ = Zᵢ, W₍ᵢ₎ = 1). One-pass online streaming update.
+
+**Tie breaking:** "tied points being assigned arbitrarily to the set of lower index." If xᵢ = xⱼ and i < j then Sⱼ(x) = ∅.
+
+**Online update formula:** New centroid = old_center * old_weight + new_point, divided by (old_weight + 1). Only the winning cluster's center changes per point.
+
+### SECTION 3.4 EXCERPT:
+**[PDF PAGE 13]** "As a scrambled dimension test for independence among several variables... First, the sample points are grouped into a minimum distance partition using k-means, and the within-class variance is determined."
+
+> "To illustrate this method, a sample of 150 points was prepared in which points were distributed uniformly outside a square 60 units on a side, but inside a surrounding square 100 units on a side."
+
+> "This gave a sample which involves essentially a zero correlation coefficient, and yet a substantial degree of relationship... The above procedure was carried out using k-means with k = 12."
+
+> "As was expected, the variance after scrambling was increased by a factor of 1.6."
+
+> "Using k = 6, 12, and 18, the within-class variance increased after scrambling by the factors 1.40, 1.55, and 1.39, respectively."
+
+**Square-ring experiment:** 150 points uniform in [−50, 50]² excluding (−30, 30)². k = 12. Scrambled ratio observed by author: **1.6**. Paper also applied to a 5D sample with k = 6, 12, 18 giving ratios 1.40, 1.55, 1.39.
+
+**Non-parametric test proposal:** Repeat scrambling n times; the rank of unscrambled WCSS among n+1 values should be uniformly distributed under H₀. Example: if unscrambled variance is the lowest of 19 scrambled, reject independence at Type I error = .05.
+
+---
+
+### Reproduction Summary (from data.json / contract.md):
+
+| Aspect | Details |
+|--------|---------|
+| **Dataset** | Original: 150 points, uniform in 100×100 outer square minus 60×60 inner square. Scrambled: 19 permutations (scrambled_00–scrambled_18). Each column independently permuted. |
+| **Parameters** | Seed = 42, k = 12, N = 150, d = 2, one-pass online only |
+| **Algorithm** | First k seeds, tie→lowest index, single pass, exact running mean update |
+| **Outputs** | centroids, counts, stream_labels, assignments, inertia, data_rows, distance_calculations |
+
+### Key Limitations Noted in Contract:
+- Ratio 1.6 is a **historical comparison**, NOT a PASS threshold.
+- A finite single-pass run cannot prove asymptotic convergence (Theorem 1 is a.s. limit as n → ∞).
+- Original paper sample data and random seed are **unavailable**.
+- No Lloyd iterations, no reinitialization — pure MacQueen streaming k-means only.
+
+---
+
+All required fields sourced from actual downloaded/verified evidence. No external generation or inference used.
+✓ protocol: completed
+## Protocol Written and Verified
+
+**Path:** `E:/Projects/wyy/Mewcode/paper_repro/kmeans_validated_20261003/protocol.md`
+**SHA-256:** `1eabdfa21912fcf225c617c9d41172e86cb4c4d4108f6b366c9b9987fbcecd0d`
+
+### Key contents:
+
+| Item | Value in Protocol |
+|------|------------------|
+| Algorithm | First-k seeds, one-pass streaming, exact running-mean, lowest-index tie break (§2.1) |
+| No iterations | Explicitly disallowed Lloyd steps / k-means++ / reinit |
+| distance_calculations | Exactly 1656 = (150−12)×12 per dataset — cited once unambiguously |
+| N | 150 points per dataset across 20 datasets (original + 19 scrambled) |
+| k | 12 |
+| Pass/Fail/Partial | Based on execution success + checker compliance; historical ratio ~1.6 not a threshold |
+| Exact-ratio disclaimer | Original data/seeds unavailable; only method & experimental design reproduced |
+
+### Independent verification commands:
+
+```
+D:\anaconda3\python.exe E:/Projects/wyy/Mewcode/paper_repro/kmeans_validated_20261003/run.py
+D:\anaconda3\python.exe -m mewcode.kmeans_check E:/Projects/wyy/Mewcode/paper_repro/kmeans_validated_20261003
+```
+
+Audited protocol revision: Editorial audit before resumed verification: correct author, actual fixture list, disjoint verdict rules and scope wording. Algorithm, sample, seed and numeric tolerances unchanged. Original retained as protocol.generated.md.
+Current protocol SHA-256: 7d187412704fb76a6c64c88169c6bc2c36ec34c49cd6d6dc95ab6324645ef07c
+✓ study: completed
+All done. Here's the summary:
+
+---
+
+**COMMAND:** `D:\anaconda3\python.exe "E:/Projects/wyy/Mewcode/paper_repro/kmeans_validated_20261003/run.py"`
+**EXIT CODE:** 0
+
+**VERIFY COMMAND:** `D:\anaconda3\python.exe -m mewcode.kmeans_check "E:/Projects/wyy/Mewcode/paper_repro/kmeans_validated_20261003"`
+**EXIT CODE:** 0 — **PASS** (20 experiments, 7 fixtures)
+
+**FILES in experiment directory:**
+
+| File | Purpose |
+|------|---------|
+| `run.py` | Core implementation + experiment runner |
+| `results.json` | All 20 dataset results |
+| `report.md` | Metrics, comparison, limitations |
+| `run.log` | Execution log with all 20 run outputs |
+
+**Bug found and fixed:** The initial `nearest()` call on seed points corrupted `stream_labels` — seeds must get deterministic labels `0..k-1` without distance computation, per the checker's reference. One-pass streaming with first-k seeds only runs on non-seed points for distance counting.
+
+**Actual metrics:** WCSS_original=17375.24, mean scrambled ratio=1.17, permutation p=0.20. Mean ratio > 1 (qualitatively consistent with paper direction); exact value differs from ~1.6 due to different sample instance/seed.
+✓ verification: completed
+Independent deterministic verification (no model call)
+COMMAND: E:\Projects\wyy\Mewcode\.venv\Scripts\python.exe E:\Projects\wyy\Mewcode\paper_repro\kmeans_validated_20261003\run.py
+EXIT CODE: 0
+Done. Wrote results.json, report.md, run.log
+
+COMMAND: E:\Projects\wyy\Mewcode\.venv\Scripts\python.exe -m mewcode.kmeans_check E:\Projects\wyy\Mewcode\paper_repro\kmeans_validated_20261003
+EXIT CODE: 0
+{
+  "verdict": "PASS",
+  "experiments": 20,
+  "algorithm_fixtures": 7,
+  "data_rows": 150,
+  "k": 12,
+  "seed": 42,
+  "original_wcss": 17375.2435207137,
+  "first_scramble_ratio": 1.0921712820444387,
+  "mean_scramble_ratio": 1.1708871294807808,
+  "permutation_p": 0.2,
+  "paper_reported_ratio": 1.6,
+  "scope": "Method and synthetic experiment reproduction; original sample/seed unavailable."
+}
+
+FILES: run.py, results.json, report.md, run.log exist
+VERDICT: PASS
+
+PAPER AUDIT: PASS
+ROOT: E:\Projects\wyy\Mewcode\paper_repro\kmeans_validated_20261003
+OBSERVED: {"algorithm_compliance": [], "count_sums": [150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150], "data_rows": [150], "distance_calculations": [1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656, 1656], "expected_distance": 1656}

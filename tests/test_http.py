@@ -57,6 +57,9 @@ def test_console_is_served_and_contains_core_actions():
     assert "focusComposer" in response.text
     assert "与 LLM 对话" in response.text
     assert "tool_result" in response.text
+    assert "Agent 执行流程" in response.text
+    assert "dag_node_status" in response.text
+    assert "flowDash" in response.text
 
 
 def test_health_endpoint_returns_runtime_liveness():

@@ -1,0 +1,117 @@
+SOURCE URL: https://www.cs.cmu.edu/~bhiksha/courses/mlsp.fall2010/class14/macqueen.pdf
+HTTP STATUS: 200
+PDF PAGES: 17
+PDF SHA-256: 55dc4458c47e13ccfb0f8afbc57862b3edd8432905bf391e61e75859c41aa1c0
+
+SECTION 2.1 EXCERPT:
+2.1.Preliminaries.Letzi,Z2,- - - bearandomsequenceofpoints(vectors)in
+EN,eachpointbeingselectedindependentlyoftheprecedingonesusingafixed
+probabilitymeasurep.ThusP[zie A]= p(A)andP[zn+leAIzi,Z2,*- ,Zn]=
+
+[PDF PAGE 3]
+MULTIVARIATE OBSERVATIONS 283
+p(A),n= 1,2,*--,forA anymeasurablesetinEN.Relativetoagiven
+k-tupleX = (X1,X2,* ,Xk),xiEEN,i= 1,2,***,k,wedefineaminimum
+distancepartitionS(x)= {SI(X),S2(X),* ,Sk(X)}ofEN,by
+(2.1)SI(x)= TI(x),S2(x)= T2(x)S1(x),*-,
+Sk(X)= Tk(X)S(X)S2(X)*.*.*Sk-l(X),
+where
+(2.2)Ti(x)={E:EEN,I|-xil< 1-xjl,j= 1,2, ,k}.
+ThesetSi(x)containsthepointsinENnearesttoxi,withtiedpointsbeingas-
+signedarbitrarilytothesetoflowerindex.Notethatwiththisconventioncon-
+cerningtiedpoints,ifxi=xjandi<jthenSj(x)= 0.Samplek-means
+= 2 k** xx),eEEN,i= 1,* ,k,withassociatedintegerweights
+l"2 k**W8)arenowdefinedasfollows:x1=Zi, = 1,i= 1,2, ,k,and
+forn = 1,2, * ,ifZk+ne Stxi = (Wt4t+ Zn+k)/(Wl+ 1),Wt+l - Wt + 1,
+andxj"+'=x4n,wi+1=winforj$i,whereSn= {Sn,Sn,**Sk}isthemini-
+mumdistancepartitionrelativetox".
+Statedinformally,thek-meansprocedureconsistsofsimplystartingwithk
+groupseachofwhichconsistsofasinglerandompoint,andthereafteradding
+eachnewpointtothegroupwhosemeanthenewpointisnearest.Afterapoint
+isaddedtoagroup,themeanofthatgroupisadjustedinordertotakeaccountof
+thenewpoint.Thusateachstagethek-meansare,infact,themeansofthegroups
+theyrepresent(hencethetermk-means).
+Instudyingtheasymptoticbehaviorofthek-means,wemaketheconvenient
+assumptions,(i)pisabsolutelycontinuouswithrespecttoLebesguemeasure
+onEN,and(ii)p(R)= 1foraclosedandboundedconvexsetRC EN,and
+p(A)> 0foreveryopensetA C R.Foragivenk-tuplex= (xl,x2, ,k)-
+suchanentitybeingreferredtohereafterasak-point-let
+k
+W(X)=iijsIZ- Xi2dp(z),
+(2.3)k V(X)=i. Iz|-ui(x)12dp(z),
+whereS= {S1,S2,* ,Sk}istheminimumdistancepartitionrelativetox,and
+ui(x)= sizdp(z)/p(Si)orui(x)=xi,accordingtowhetherp(Si)> 0 or
+p(Si)= 0.Ifxi= ui(x),i= 1,2,* ,kwesaythek-pointxisunbiased.
+Theprincipalresultisasfollows.
+THEOREM1.ThesequenceofrandomvariablesW(xl),W(x2),*--converges
+a.s.andW.=lim",.W(xn)isa.s.equaltoV(x)forsomexintheclassofk-points
+X = (XlX222,* ,Xk)whichareunbiased,andhavethepropertythatxi#xjifi$j.
+Inlieuofasatisfactorystronglawoflargenumbersfork-means,weobtainthe
+followingtheorem.
+THEOREM2.LetUn'= U,(Xn)andpn= p(S,(xn));then
+(2.4) E ( Eptixt-u )/m-O as m->oo.n=l i=l II a.s.
+
+[PDF PAGE 4]
+284 FIFTH BERKELEY SYMPOSIUM: MAC QUEEN
+
+
+SECTION 3.4 EXCERPT:
+3.4.Ascrambleddimensiontestforindependenceamongseveralvariables.Asa
+generaltestforrelationshipamongvariablesinasampleofN-dimensionalob-
+servations,weproposeproceedingasfollows.First,thesamplepointsaregrouped
+intoaminimumdistancepartitionusingk-means,andthewithin-classvariance
+isdetermined.Thentherelationamongthevariablesisdestroyedbyrandomly
+associatingthevaluesineachdimension;thatis,asampleispreparedinwhich
+thevariablesareunrelated,butwhichhasexactlythesamemarginaldistri-
+butionsastheoriginalsample.Aminimumdistancepartitionandtheassociated
+within-classvarianceisnowdeterminedforthissample.Intuitionandinspection
+ofafewobviousexamplessuggestthatontheaveragethis"scrambling"will
+tendtoincreasethewithin-classvariance,moreorlessregardlessofwhatever
+typeofrelationmighthaveexistedamongthevariables,andthuscomparison
+ofthetwovarianceswouldrevealwhetherornotanysuchrelationexisted.
+Toillustratethismethod,asampleof150pointswaspreparedinwhichpoints
+weredistributeduniformlyoutsideasquare60unitsonaside,butinsidea
+surroundingsquare100unitsonaside.Thisgaveasamplewhichinvolves
+essentiallyazerocorrelationcoefficient,andyetasubstantialdegreeofrelation-
+shipwhichcouldnotbedetectedbyanyconventionalquantitativetechnique
+knowntotheauthor(althoughitcouldbedetectedimmediatelybyvisual
+inspection).Theaboveprocedurewascarriedoutusingk-meanswithk= 12.
+Aswasexpected,thevarianceafterscramblingwasincreasedbyafactorof1.6.
+Thewithin-classvarianceswerenotonlylargerinthescrambleddata,butwere
+apparentlymorevariable.Thisprocedurewasalsoappliedtothefive-
+dimensionalsampledescribedintheprecedingsection.Usingk= 6,12,and18,
+thewithin-classvarianceincreasedafterscramblingbythefactors1.40,1.55,
+and1.39,respectively.
+Astatisticaltestfornonindependencecanbeconstructedbysimplyrepeating
+thescramblingandpartitioninganumberoftimes,thusobtainingempiricallya
+
+[PDF PAGE 13]
+MULTIVARIATE OBSERVATIONS 293
+samplefromtheconditionaldistributionofthewithin-classvarianceunlderthe
+hypothesisthatthevariablesareunrelatedandgiventhemarginalvaluesofthe
+sample.Underthehypothesisofindependence,theunscrambledvarianceshould
+havethesame(conditional)distributionasthescrambledvariance.Infact,the
+rankoftheunscrambledvarianceinthisempiricaldistributionshouldbe
+equallylikelytotakeonanyofthepossiblevalues1,2,***,n+ 1,wherenis
+thenumberofscrambledsamplestaken,regardlessofthemarginaldistributions
+intheunderlyingpopulation.Thustherankcanbeusedinanonparametric
+testofthehypothesisofindependence.Forexample,iftheunscrambledvariance
+isthelowestin19valuesofthescrambledvariance,wecanrejectthehypothesis
+ofindependencewithaTypeIerrorof.05.
+A computerprogramwasnotavailabletodothescrambling,anditsbeing
+inconvenienttosetuplargenumbersofscrambledsamplesusingpunchedcards,
+furthertestingofthismethodwasnotundertaken.Itisestimated,however,that
+anefficientcomputerprogramwouldeasilypermitthistesttobeappliedat,say,
+the.01level,onlargesamplesinmanydimensions.
+Thepowerofthisprocedureremainstobeseen.Ontheencouragingsideis
+therelatedconjecture,thatforfixedmarginaldistributions,thewithin-class
+variancefortheoptimalpartitionasdefinedinsection1ismaximalwhenthe
+jointdistributionisactuallytheproductofthemarginals.Ifthisistrue(and
+itseemslikelythatitis,atleastforalargeclassofreasonabledistributions),
+thenwereasonthatsincethek-meansprocesstendstogiveagoodpartition,this
+differencewillbepreservedinthescrambledandunscrambledvariances,par-
+ticularlyforlargesamples.Variationinthewithin-classvarianceduetothe
+randomorderinwhichthepointsareprocessed,canbereducedbytaking
+severalrandomorders,andaveragingtheirresult.Ifthisisdoneforthe
+scrambledrunsaswell,theTypeIerrorispreserved,whilethepowerisincreased
+somewhat.

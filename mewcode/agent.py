@@ -30,6 +30,7 @@ agent.py — MewCode 的核心引擎（Agent 主循环）
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -99,6 +100,19 @@ MEMORY_EXTRACTION_INTERVAL = 5
 MAX_TOKENS_CEILING = 64000
 # 提升后仍然超限，最多再恢复几次（防止无限循环）
 MAX_OUTPUT_TOKENS_RECOVERIES = 3
+MAX_IDENTICAL_TOOL_ATTEMPTS = 2
+
+
+def _tool_error_category(output: str) -> str:
+    """Classify common tool failures for the runtime UI and Agent feedback."""
+    value = output.lower()
+    if "permission denied" in value or "permission" in value and "denied" in value:
+        return "permission"
+    if "validation error" in value or "invalid parameter" in value:
+        return "validation"
+    if any(token in value for token in ("timeout", "timed out", "rate limit", "429", "connection", "network")):
+        return "transient"
+    return "execution"
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +441,7 @@ class StreamingExecutor:
 class Agent:
     """
     AI Agent 核心引擎。
-    
+
     工作流程：
     1. 构建系统提示词 + 对话历史
     2. 发送给 LLM 获取响应
@@ -453,13 +467,13 @@ class Agent:
         self.protocol = protocol
         self.work_dir = work_dir
         self.max_iterations = max_iterations
-        
+
         # --- 权限系统 ---
         self.permission_checker = permission_checker
         self.permission_mode: PermissionMode = (
             permission_checker.mode if permission_checker else PermissionMode.DEFAULT
         )
-        
+
         # --- 上下文管理 ---
         self.context_window = context_window
         self.session_dir = ensure_session_dir(work_dir)  # 会话文件存储目录
@@ -467,25 +481,25 @@ class Agent:
         self.replacement_state: ContentReplacementState = create_replacement_state()
         # 恢复状态：保存最近的文件读取内容，用于压缩后恢复上下文
         self.recovery_state: RecoveryState = RecoveryState()
-        
+
         # --- Token 用量统计 ---
         self.total_input_tokens = 0
         self.total_output_tokens = 0
-        
+
         # --- 记忆与 Hook ---
         self.instructions_content = instructions_content
         self.memory_manager = memory_manager
         self.hook_engine = hook_engine
-        
+
         # --- 内部状态 ---
         self._loop_count = 0           # 循环计数器，用于触发定期记忆提取
         self._extracting = False       # 是否正在提取记忆（防止重复提取）
         self.session_id: str = ""      # 当前会话 ID
-        
+
         # --- 技能系统 ---
         self.active_skills: dict[str, str] = {}  # 当前激活的技能 {名称: 内容}
         self._skill_catalog: str = ""            # 可用技能目录（告诉 LLM 有哪些技能）
-        
+
         # --- 子 Agent / 团队协作 ---
         self._agent_catalog: str = ""            # 可用子 Agent 目录
         self._agent_catalog_list: list[tuple[str, str]] = []
@@ -497,6 +511,15 @@ class Agent:
         self._team_manager: Any = None              # 团队管理器
         self.notification_fn: Callable[[], list[str]] | None = None  # 通知回调
         self.file_history: Any = None               # 文件历史记录器
+        self.cancel_event = asyncio.Event()
+
+    def cancel(self) -> None:
+        """Request cooperative cancellation before the runtime cancels its task."""
+        self.cancel_event.set()
+
+    def _raise_if_cancelled(self) -> None:
+        if self.cancel_event.is_set():
+            raise asyncio.CancelledError
 
     @property
     def _transcript_path(self) -> str:
@@ -576,13 +599,13 @@ class Agent:
     async def run(self, conversation: ConversationManager) -> AsyncIterator[AgentEvent]:
         """
         Agent 主循环——这是整个 Agent 最核心的方法。
-        
+
         参数:
             conversation: 对话管理器，存储所有消息历史
-            
+
         返回:
             异步迭代器，yield 各种 AgentEvent 事件给 UI 层
-            
+
         工作流程：
         ┌─────────────────────────────────────────────┐
         │  1. 初始化：注入环境信息、记忆、触发 Hook      │
@@ -600,7 +623,7 @@ class Agent:
         └─────────────────────────────────────────────┘
         """
         self._current_conversation = conversation
-        
+
         # ===== 阶段 1：初始化 =====
         # 注入环境信息（工作目录、可用技能等）到对话中
         env_context = build_environment_context(
@@ -626,6 +649,7 @@ class Agent:
         output_recoveries = 0            # 输出超限恢复次数
 
         while True:
+            self._raise_if_cancelled()
             iteration += 1
 
             # 安全检查：防止无限循环
@@ -858,6 +882,7 @@ class Agent:
             batches = partition_tool_calls(response.tool_calls, self.registry)
 
             for batch in batches:
+                self._raise_if_cancelled()
                 if batch.concurrent and len(batch.calls) > 1:
                     # 并行执行多个工具（如同时读取多个文件）
                     batch_results = await self._execute_batch_parallel(batch.calls)
@@ -1090,11 +1115,11 @@ class Agent:
     ) -> AsyncIterator[tuple[ToolResult, float, bool]]:
         """
         执行单个工具（带权限检查）。
-        
+
         这是一个异步生成器，可能会 yield 两种东西：
         1. PermissionRequest：需要用户确认，等待用户决定
         2. (ToolResult, elapsed, is_unknown)：工具执行结果
-        
+
         工作流程：
         1. 检查工具是否存在、是否启用
         2. 权限检查（可能 yield PermissionRequest 等待用户决定）
@@ -1199,10 +1224,10 @@ class Agent:
     ) -> None:
         """
         为上下文压缩恢复保存快照。
-        
+
         当对话被压缩时，早期工具结果会被丢弃。但如果之前读取了文件，
         压缩后需要重新附加这些文件内容，否则 LLM 会「忘记」文件内容。
-        
+
         这里保存 ReadFile 工具读取的文件内容，压缩后可以恢复。
         """
         if result.is_error or tc.tool_name != "ReadFile":
@@ -1223,7 +1248,7 @@ class Agent:
     ) -> None:
         """
         自动提取记忆。
-        
+
         每隔一定轮数，自动分析对话历史，提取用户偏好、项目知识等，
         保存到长期记忆中。这样下次对话时，Agent 还能记得这些信息。
         """
@@ -1244,7 +1269,7 @@ class Agent:
     ) -> CompactNotification | ErrorEvent:
         """
         手动触发上下文压缩。
-        
+
         用户可以通过 /compact 命令手动触发，或者系统自动触发。
         压缩会用 LLM 生成对话摘要，替换早期对话内容。
         """
@@ -1286,17 +1311,17 @@ class Agent:
     ) -> str:
         """
         简化版 Agent 循环，用于非交互模式（如子 Agent、批处理）。
-        
+
         与 run() 的区别：
         - 不产生事件流，直接返回最终文本结果
         - 不处理权限请求（自动拒绝需要用户确认的操作）
         - 适用于子 Agent 执行独立任务
-        
+
         参数:
             task: 要执行的任务描述
             conversation: 可选的对话管理器，不提供则创建新的
             event_callback: 可选的事件回调，用于通知外部进度
-            
+
         返回:
             LLM 最后一条文本回复
         """
@@ -1339,9 +1364,15 @@ class Agent:
         )
 
         last_text = ""  # 记录最后一条文本，作为返回值
+        last_tool_signature = ""
+        identical_tool_attempts = 0
 
         # 主循环（与 run() 类似，但简化了事件处理）
         for iteration in range(1, self.max_iterations + 1):
+            self._raise_if_cancelled()
+            llm_started = time.monotonic()
+            if event_callback:
+                event_callback({"type": "agent_phase", "phase": "thinking", "iteration": iteration})
             if self.hook_engine:
                 ctx = self._build_hook_context("turn_start")
                 await self.hook_engine.run_hooks("turn_start", ctx)
@@ -1385,6 +1416,7 @@ class Agent:
             llm_stream = self.client.stream(api_conv, system=system, tools=tools)
             async for _event in collector.consume(llm_stream):
                 pass
+            llm_duration_ms = round((time.monotonic() - llm_started) * 1000)
 
             response = collector.response
             self.total_input_tokens += response.input_tokens
@@ -1393,10 +1425,13 @@ class Agent:
             if event_callback:
                 event_callback({
                     "type": "usage",
+                    "iteration": iteration,
+                    "phase": "thinking",
                     "usage": {
                         "inputTokens": self.total_input_tokens,
                         "outputTokens": self.total_output_tokens,
                     },
+                    "duration_ms": llm_duration_ms,
                 })
 
             if response.text:
@@ -1414,6 +1449,8 @@ class Agent:
             )
 
             if not response.tool_calls:
+                if event_callback:
+                    event_callback({"type": "agent_phase", "phase": "completed", "iteration": iteration})
                 conversation.add_assistant_message(response.text)
                 if self.file_history is not None:
                     summary = response.text[:60] + "..." if len(response.text) > 60 else response.text
@@ -1440,18 +1477,52 @@ class Agent:
 
             tool_results: list[ToolResultBlock] = []
             for tc in response.tool_calls:
+                signature = json.dumps(
+                    [tc.tool_name, tc.arguments], sort_keys=True, ensure_ascii=False,
+                    separators=(",", ":"), default=str,
+                )
+                if signature == last_tool_signature:
+                    identical_tool_attempts += 1
+                else:
+                    last_tool_signature = signature
+                    identical_tool_attempts = 1
+                if event_callback:
+                    event_callback({"type": "agent_phase", "phase": "tool_call", "iteration": iteration})
                 if event_callback:
                     event_callback({
                         "type": "tool_use",
                         "toolName": tc.tool_name,
+                        "tool_id": tc.tool_id,
                         "args": tc.arguments,
+                        "iteration": iteration,
+                        "phase": "tool_call",
+                        "attempt": identical_tool_attempts,
                     })
-                result = await self._execute_tool_noninteractive(tc)
+                tool_started = time.monotonic()
+                if identical_tool_attempts > MAX_IDENTICAL_TOOL_ATTEMPTS:
+                    result = ToolResult(
+                        output=("Repeated tool call blocked: this exact tool and argument set "
+                                f"has already been repeated {MAX_IDENTICAL_TOOL_ATTEMPTS} times. "
+                                "Change the arguments or choose another approach."),
+                        is_error=True,
+                    )
+                else:
+                    result = await self._execute_tool_noninteractive(tc)
+                duration_ms = round((time.monotonic() - tool_started) * 1000)
+                attempt = identical_tool_attempts
                 if event_callback:
                     event_callback({
                         "type": "tool_result", "toolName": tc.tool_name,
+                        "tool_id": tc.tool_id,
                         "output": result.output, "is_error": result.is_error,
+                        "iteration": iteration, "phase": "tool_result",
+                        "duration_ms": duration_ms,
+                        "error_category": _tool_error_category(result.output) if result.is_error else "",
+                        "attempt": attempt,
                     })
+                if not result.is_error:
+                    last_tool_signature = ""
+                    identical_tool_attempts = 0
                 content = self._maybe_persist_or_truncate(tc.tool_id, result.output)
                 tool_results.append(
                     ToolResultBlock(
@@ -1462,6 +1533,8 @@ class Agent:
                 )
 
             conversation.add_tool_results_message(tool_results)
+            if event_callback:
+                event_callback({"type": "agent_phase", "phase": "thinking", "iteration": iteration + 1})
 
             if self.hook_engine:
                 ctx = self._build_hook_context("turn_end")
@@ -1478,7 +1551,7 @@ class Agent:
     ) -> ToolResult:
         """
         非交互模式下的工具执行。
-        
+
         与 _execute_tool 的区别：
         - 不产生事件流，直接返回结果
         - 不能向用户询问权限（自动拒绝需要确认的操作）
@@ -1562,7 +1635,7 @@ class Agent:
     def _maybe_persist_or_truncate(self, tool_use_id: str, text: str) -> str:
         """
         处理工具输出：根据长度决定如何截断或持久化。
-        
+
         策略：
         - 超过 SINGLE_RESULT_CHAR_LIMIT：保存到文件，只返回预览
         - 超过 MAX_OUTPUT_CHARS：截断，添加省略号

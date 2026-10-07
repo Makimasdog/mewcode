@@ -51,7 +51,7 @@ class ProgressInfo:
 class BackgroundTask:
     """
     后台任务的完整状态。
-    
+
     每个后台任务包含：
     - 任务基本信息（id, name, task）
     - 关联的 Agent 实例
@@ -72,12 +72,13 @@ class BackgroundTask:
     attempt: int = 0            # 当前重试次数
     max_attempts: int = 1       # 最大重试次数
     timeout_seconds: float | None = None  # 超时时间（秒）
+    event_callback: Callable[[dict[str, Any]], None] | None = None
 
 
 class TaskManager:
     """
     后台任务管理器。
-    
+
     管理后台 Agent 任务的完整生命周期：
     启动 → 运行 → 完成/失败/取消
     支持重试、超时、持久化和进程重启后恢复。
@@ -99,10 +100,11 @@ class TaskManager:
         *,
         max_attempts: int = 1,
         timeout_seconds: float | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         """
         启动一个后台任务。
-        
+
         参数:
             agent: 执行任务的 Agent 实例
             task: 任务描述
@@ -110,7 +112,7 @@ class TaskManager:
             fork_conversation: Fork 的对话副本（可选）
             max_attempts: 最大重试次数
             timeout_seconds: 超时时间（秒）
-            
+
         返回:
             task_id: 任务唯一标识符
         """
@@ -123,6 +125,7 @@ class TaskManager:
             run_id=task_id,
             max_attempts=max(1, max_attempts),
             timeout_seconds=timeout_seconds,
+            event_callback=event_callback,
         )
         self._tasks[task_id] = bg
 
@@ -153,7 +156,7 @@ class TaskManager:
     ) -> None:
         """
         后台执行任务的核心逻辑。
-        
+
         包含：
         - 重试机制：失败后自动重试，最多 max_attempts 次
         - 超时控制：超过 timeout_seconds 自动终止
@@ -177,9 +180,13 @@ class TaskManager:
                 self.store.append_event(task_id, "run_started", {"attempt": bg.attempt})
                 try:
                     if fork_conversation is not None:
-                        coro = bg.agent.run_to_completion("", fork_conversation)
+                        coro = bg.agent.run_to_completion(
+                            "", fork_conversation, event_callback=bg.event_callback
+                        )
                     else:
-                        coro = bg.agent.run_to_completion(bg.task)
+                        coro = bg.agent.run_to_completion(
+                            bg.task, event_callback=bg.event_callback
+                        )
                     if bg.timeout_seconds and bg.timeout_seconds > 0:
                         result = await asyncio.wait_for(coro, timeout=bg.timeout_seconds)
                     else:
@@ -200,6 +207,8 @@ class TaskManager:
 
                 bg.result = result
                 bg.status = "completed"
+                if bg.event_callback:
+                    bg.event_callback({"type": "agent_status", "status": "completed"})
                 run.result = result or ""
                 run.status = RunStatus.COMPLETED
                 run.ended_at = time.time()
@@ -239,6 +248,8 @@ class TaskManager:
 
         except asyncio.CancelledError:
             bg.status = "cancelled"
+            if bg.event_callback:
+                bg.event_callback({"type": "agent_status", "status": "cancelled"})
             bg.result = "Task was cancelled"
             run.status = RunStatus.CANCELLED
             run.error = bg.result
@@ -248,6 +259,8 @@ class TaskManager:
         except Exception as e:
             log.error("Background task %s failed: %s", task_id, e)
             bg.status = "failed"
+            if bg.event_callback:
+                bg.event_callback({"type": "agent_status", "status": "failed", "error": str(e)})
             bg.result = f"Error: {e}"
             run.status = RunStatus.FAILED
             run.error = bg.result
@@ -366,13 +379,13 @@ class TaskManager:
     def recover(self, agent_factory: Callable[[AgentRun], Agent]) -> list[str]:
         """
         进程重启后恢复未完成的任务。
-        
+
         从持久化存储中加载 PENDING/RUNNING 状态的任务，
         用 agent_factory 重新创建 Agent 实例，然后继续执行。
-        
+
         参数:
             agent_factory: 从 AgentRun 创建 Agent 实例的工厂函数
-            
+
         返回:
             已恢复的任务 ID 列表
         """
